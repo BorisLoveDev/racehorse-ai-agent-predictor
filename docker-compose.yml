@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # Redis for pub/sub messaging
+  redis:
+    image: redis:7-alpine
+    container_name: racehorse-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Race Monitor Service
+  monitor:
+    build:
+      context: .
+      dockerfile: services/monitor/Dockerfile
+    container_name: racehorse-monitor
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - RACEHORSE_REDIS__HOST=redis
+      - RACEHORSE_REDIS__PORT=6379
+    volumes:
+      - ./races.db:/app/races.db
+      - ./race_data:/app/race_data
+    restart: unless-stopped
+
+  # Agent Orchestrator Service
+  orchestrator:
+    build:
+      context: .
+      dockerfile: services/orchestrator/Dockerfile
+    container_name: racehorse-orchestrator
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - RACEHORSE_REDIS__HOST=redis
+      - RACEHORSE_REDIS__PORT=6379
+    volumes:
+      - ./races.db:/app/races.db
+    restart: unless-stopped
+
+  # Results Evaluation Service
+  results:
+    build:
+      context: .
+      dockerfile: services/results/Dockerfile
+    container_name: racehorse-results
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - RACEHORSE_REDIS__HOST=redis
+      - RACEHORSE_REDIS__PORT=6379
+    volumes:
+      - ./races.db:/app/races.db
+    restart: unless-stopped
+
+  # Telegram Notification Service
+  telegram:
+    build:
+      context: .
+      dockerfile: services/telegram/Dockerfile
+    container_name: racehorse-telegram
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - RACEHORSE_REDIS__HOST=redis
+      - RACEHORSE_REDIS__PORT=6379
+    volumes:
+      - ./races.db:/app/races.db
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: racehorse-network

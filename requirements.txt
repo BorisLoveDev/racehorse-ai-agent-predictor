@@ -1,1 +1,24 @@
+# Existing dependencies
 playwright>=1.40.0
+
+# Pydantic and settings
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# LangChain and AI
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.20
+langgraph>=0.0.20
+
+# Web search
+tavily-python>=0.3.0
+
+# Telegram bot
+aiogram>=3.4.0
+
+# Redis pub/sub
+redis>=5.0.0
+
+# Async utilities
+asyncio-redis>=0.16.0
