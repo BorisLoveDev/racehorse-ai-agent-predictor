@@ -4,114 +4,165 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a horse racing data analysis system that scrapes race data from TabTouch (tabtouch.mobi), monitors live races, and provides a structured interface for AI-powered race analysis and predictions.
+This is a horse racing betting agent system that:
+- Scrapes race data from TabTouch (tabtouch.mobi)
+- Monitors live races in real-time
+- Uses AI agents (Gemini, Grok) to analyze races and generate betting predictions
+- Evaluates prediction outcomes against actual results
+- Sends notifications via Telegram
 
-## Core Architecture
+## Architecture
 
-### Main Components
+### Microservices (Docker Compose)
 
-1. **TabTouchParser** (`tabtouch_parser.py:226-1102`)
-   - Core web scraper using Playwright for async browser automation
-   - Handles three main operations: fetching next races, scraping race details, parsing race results
-   - Manages timezone conversions (TabTouch is in Australia/Perth timezone)
-   - Stores data in SQLite database (`races.db`)
+The system runs as 5 Docker containers communicating via Redis pub/sub:
 
-2. **Data Models** (`tabtouch_parser.py:137-222`)
-   - `NextRace`: Upcoming race preview with time, location, race number
-   - `Runner`: Individual horse/greyhound participant data
-   - `RaceDetails`: Complete race information with all participants, odds, conditions
-   - `RaceResult`: Post-race results including finishing order and dividends
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Monitor   │────▶│    Redis     │◀────│ Orchestrator│
+│  (scraper)  │     │  (pub/sub)   │     │ (AI agents) │
+└─────────────┘     └──────────────┘     └─────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        ┌─────────┐  ┌──────────┐  ┌──────────┐
+        │ Results │  │ Telegram │  │ races.db │
+        │(checker)│  │  (notify)│  │ (SQLite) │
+        └─────────┘  └──────────┘  └──────────┘
+```
 
-3. **RaceTracker** (`tabtouch_parser.py`)
-   - High-level wrapper around TabTouchParser
-   - Provides simplified async methods for monitoring races
+1. **Monitor** (`services/monitor/main.py`)
+   - Polls TabTouch every 60s for upcoming horse races
+   - Triggers analysis 3-5 minutes before race start
+   - Publishes to `race:ready_for_analysis` and `race:schedule_result_check`
 
-4. **RaceMonitor** (`run_monitor.py:29-90`)
-   - Production monitoring loop that periodically checks for race updates
-   - Saves race data to JSON files organized by status (upcoming/results)
+2. **Orchestrator** (`services/orchestrator/main.py`)
+   - Listens on `race:ready_for_analysis`
+   - Runs Gemini and Grok agents in parallel
+   - Saves predictions to database
+   - Publishes to `predictions:new`
 
-### Timezone Architecture
+3. **Results** (`services/results/main.py`)
+   - Listens on `race:schedule_result_check`
+   - Waits for races to finish, fetches results
+   - Evaluates predictions against actual finishing order
+   - Saves outcomes to `prediction_outcomes` table
 
-Critical to understand: The system handles three timezone contexts:
-- **SOURCE_TIMEZONE** (Australia/Perth): Where TabTouch operates - used for parsing race times from the website
-- **CLIENT_TIMEZONE**: User's local timezone - used for display and analysis
-- **UTC**: Standard timestamp storage in database
+4. **Telegram** (`services/telegram/main.py`)
+   - Listens on `predictions:new` and `results:evaluated`
+   - Sends formatted notifications to configured chat
 
-All race time parsing uses `parse_race_time()` which creates timezone-aware datetimes in SOURCE_TIMEZONE. The `format_time_for_display()` function converts to CLIENT_TIMEZONE for output.
+5. **Redis** - Message broker for pub/sub communication
 
-## Common Development Tasks
+### Core Components
 
-### Running Scripts
+1. **TabTouchParser** (`tabtouch_parser.py`)
+   - Web scraper using Playwright for async browser automation
+   - Methods: `get_next_races()`, `get_race_details()`, `get_race_results()`
+   - Handles timezone conversions (SOURCE_TIMEZONE: Australia/Perth)
+
+2. **AI Agents** (`src/agents/`)
+   - `GeminiAgent` - Uses google/gemini-3-flash-preview via OpenRouter
+   - `GrokAgent` - Uses x-ai/grok-4.1-fast via OpenRouter
+   - Both return `StructuredBet` with win/place/exacta/trifecta/quinella/first4/qps bets
+
+3. **Database** (`src/database/`)
+   - `migrations.py` - Schema setup for agents, predictions, outcomes
+   - `repositories.py` - Data access layer for predictions and outcomes
+
+4. **Models** (`src/models/`)
+   - `StructuredBet` - Betting recommendation with confidence score
+   - Various bet types: WinBet, PlaceBet, ExactaBet, etc.
+
+## Running the System
+
+### Quick Start (Docker)
 
 ```bash
-# Install dependencies
-python -m pip install -r requirements.txt
-# or
-python -m playwright install  # for Playwright browsers
+# Build base image (required first time or after code changes)
+docker build -f Dockerfile.base -t racehorse-base:latest .
+
+# Start all services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+```
+
+### Development Scripts
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
 
 # Show next races
 python show_next_races.py
 
-# Show details for specific race
+# Show race details
 python show_race_details.py
 
-# Show specific race by URL
-python show_specific_race.py
-
-# Monitor a single race (waits for results)
-python run_monitor.py --url "https://www.tabtouch.mobi/..."
-
-# Continuous monitoring of all races
-python run_monitor.py --continuous
-
-# AI analysis example
-python ai_analysis_example.py
+# Test AI agents on a specific race
+python test_agent.py --url "https://www.tabtouch.mobi/..." --agent both
 ```
 
-### Setting Up Environment
+### Environment Variables
 
 Key `.env` variables:
-- `SOURCE_TIMEZONE=Australia/Perth` (TabTouch's timezone, don't change)
-- `CLIENT_TIMEZONE=Asia/Kuala_Lumpur` (set to user's local timezone)
-- `ODDS_API_KEY=...` (for future odds API integration)
-- `RACING_API_USERNAME/PASSWORD=...` (for TheRacingAPI integration)
+- `SOURCE_TIMEZONE=Australia/Perth` (TabTouch timezone, don't change)
+- `CLIENT_TIMEZONE=Asia/Kuala_Lumpur` (user's local timezone)
+- `OPENROUTER_API_KEY=...` (required for AI agents)
+- `TELEGRAM_BOT_TOKEN=...` (for notifications)
+- `TELEGRAM_CHAT_ID=...` (target chat for notifications)
 
-### Data Flow
+## Database Schema
 
-1. **Scraping**: Playwright browser navigates to TabTouch, waits for page load, parses HTML with locators
-2. **Storage**: Data saved to SQLite via `export_to_json()` function
-3. **File Output**: Race JSON files stored in `race_data/upcoming/` and `race_data/results/`
-4. **AI Integration**: Use `format_race_for_analysis()` to prepare data for Claude/AI analysis
+SQLite database `races.db` contains:
 
-## Key Technical Details
+- **agents** - AI agent configurations (gemini, grok)
+- **predictions** - Generated betting predictions with structured bets
+- **prediction_outcomes** - Evaluated results (win/loss, payouts, P/L)
+- **agent_statistics** - Aggregate performance metrics
 
-### Browser Automation (Playwright)
+## Redis Pub/Sub Channels
 
-- Mobile viewport (430x932) used to match TabTouch's responsive layout
-- Uses stealth mode to avoid detection
-- 60-second default page timeout
-- Network idle wait ensures all dynamic content loads
+| Channel | Publisher | Subscriber | Payload |
+|---------|-----------|------------|---------|
+| `race:ready_for_analysis` | Monitor | Orchestrator | race_url, race_data |
+| `race:schedule_result_check` | Monitor | Results | race_url, check_time |
+| `predictions:new` | Orchestrator | Telegram | race_url, predictions |
+| `results:evaluated` | Results | Telegram | race_url, outcomes |
 
-### Database
+## Timing Configuration
 
-The `races.db` SQLite database stores:
-- Complete race information and results
-- Historical data for future analysis
-- Indexed by location, date, race number
+Configured in `src/config/settings.py`:
 
-### Data Export Format
+- `monitor_poll_interval`: 60s (check for new races)
+- `minutes_before_race`: 3 (trigger analysis window start)
+- `result_wait_minutes`: 15 (wait after race start before checking results)
+- `result_retry_interval`: 120s (retry if results not available)
+- `result_max_retries`: 5
 
-`format_race_for_analysis()` creates a structured dict with:
-- `race_info`: Location, distance, track condition, race type
-- `runners`: List with number, name, form, barrier, weight, jockey, trainer, rating, odds
-- Pool totals and dividends
+## Key Implementation Notes
 
-This format is designed for AI analysis - it's what you'd feed to Claude for race predictions.
+- Race times are parsed in SOURCE_TIMEZONE (Perth), stored as UTC
+- Monitor uses `race.time_parsed` as fallback when `race_details.start_time_parsed` is None
+- AI agents run in parallel via `asyncio.gather()` for speed
+- Predictions include confidence scores; bets only placed above threshold (0.5)
+- All services are stateless; state lives in Redis and SQLite
 
-## Important Implementation Notes
+## Troubleshooting
 
-- All race time parsing assumes SOURCE_TIMEZONE (Perth). Never parse race times in the browser's local timezone.
-- Database transactions use atomic writes - check `export_to_json()` for the pattern
-- Playwright contexts are reused across page navigations to maintain cookies/state
-- The HTML parsing uses XPath/CSS selectors via Playwright's `.locator()` API - check specific race detail parsing at `tabtouch_parser.py:347-450`
-- Race monitoring runs on configurable intervals (default 60s) - balance between API load and data freshness
+**Services not receiving messages:**
+- Check Redis is healthy: `docker compose logs redis`
+- Verify pub/sub channels with: `docker compose exec redis redis-cli MONITOR`
+
+**No predictions being created:**
+- Check orchestrator logs for API errors
+- Verify `OPENROUTER_API_KEY` is set in `.env`
+
+**Results not being evaluated:**
+- Monitor must send `race:schedule_result_check` (check for time parsing errors)
+- Results service checks at `race_start_time + result_wait_minutes`
