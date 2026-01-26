@@ -163,7 +163,7 @@ class AgentOrchestratorService:
             agent_name=agent_name,
             race_id=race_id,
             structured_bet=structured_bet,
-            race_start_time=race_info.get("start_time")
+            race_start_time=race_info.get("start_time_iso")
         )
 
         return prediction_id

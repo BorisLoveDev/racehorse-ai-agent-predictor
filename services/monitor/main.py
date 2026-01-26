@@ -149,6 +149,7 @@ class RaceMonitorService:
                 "track_condition": race_details.track_condition,
                 "race_type": race_details.race_type,
                 "start_time": race_details.start_time,
+                "start_time_iso": race_details.start_time_parsed.isoformat() if race_details.start_time_parsed else None,
                 "url": race_details.url
             },
             "runners": [

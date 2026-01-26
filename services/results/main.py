@@ -55,6 +55,12 @@ class ResultsEvaluationService:
         await self.pubsub.subscribe("race:schedule_result_check")
 
         print(f"✓ Results Evaluation Service started")
+
+        # Restore scheduled checks from database on startup
+        restored = await self.restore_scheduled_checks()
+        if restored:
+            print(f"  Restored {restored} pending result checks from database")
+
         print(f"  Listening for result checks...")
 
         async with self.parser:
@@ -63,6 +69,59 @@ class ResultsEvaluationService:
                 self.listen_loop(),
                 self.check_results_loop()
             )
+
+    async def restore_scheduled_checks(self) -> int:
+        """Restore scheduled checks from database on startup."""
+        import sqlite3
+
+        try:
+            conn = sqlite3.connect(self.settings.database.path)
+            cursor = conn.cursor()
+
+            # Find all races with predictions but no outcomes
+            cursor.execute('''
+                SELECT DISTINCT p.race_url, p.race_start_time
+                FROM predictions p
+                WHERE p.prediction_id NOT IN (
+                    SELECT prediction_id FROM prediction_outcomes
+                )
+                AND p.race_start_time IS NOT NULL
+            ''')
+
+            count = 0
+            for row in cursor.fetchall():
+                race_url, race_start_str = row
+
+                if not race_start_str:
+                    continue
+
+                try:
+                    # Parse race start time
+                    race_start = datetime.fromisoformat(race_start_str.replace('Z', '+00:00'))
+
+                    # Calculate check time (start + wait minutes)
+                    check_time = race_start + timedelta(
+                        minutes=self.settings.timing.result_wait_minutes
+                    )
+
+                    # Only schedule if check time hasn't passed by more than 24 hours
+                    now = datetime.now(tz=check_time.tzinfo)
+                    if now - check_time < timedelta(hours=24):
+                        self.scheduled_checks[race_url] = {
+                            "check_time": check_time,
+                            "retry_count": 0
+                        }
+                        count += 1
+                except Exception as e:
+                    print(f"  ⚠ Error parsing time for {race_url}: {e}")
+                    continue
+
+            conn.close()
+            return count
+
+        except Exception as e:
+            print(f"  ✗ Error restoring scheduled checks: {e}")
+            return 0
 
     async def listen_loop(self):
         """Listen for result check scheduling."""
