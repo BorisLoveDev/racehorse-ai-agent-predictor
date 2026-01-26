@@ -59,7 +59,7 @@ class GeminiAgentSettings(BaseSettings):
     """Gemini agent configuration."""
 
     model_id: str = Field(
-        default="google/gemini-2.0-flash-exp:free",
+        default="google/gemini-3-flash-preview",
         description="Gemini model ID via OpenRouter"
     )
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
@@ -71,7 +71,7 @@ class GrokAgentSettings(BaseSettings):
     """Grok agent configuration."""
 
     model_id: str = Field(
-        default="x-ai/grok-2-1212",
+        default="x-ai/grok-4.1-fast",
         description="Grok model ID via OpenRouter"
     )
     reasoning_effort: str = Field(

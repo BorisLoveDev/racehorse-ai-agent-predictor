@@ -125,7 +125,7 @@ class ResultsEvaluationService:
 
         try:
             # Try to fetch results
-            race_result = await self.parser.scrape_race_results(race_url)
+            race_result = await self.parser.get_race_results(race_url)
 
             if race_result and race_result.finishing_order:
                 print(f"  ✓ Results found!")

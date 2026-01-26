@@ -26,7 +26,7 @@ async def test_agent(race_url: str, agent_type: str = "both"):
 
     async with parser:
         print(f"📥 Fetching race data from: {race_url}")
-        race_details = await parser.scrape_race_details(race_url)
+        race_details = await parser.get_race_details(race_url)
 
         if not race_details or not race_details.runners:
             print("❌ Failed to fetch race details or no runners found")

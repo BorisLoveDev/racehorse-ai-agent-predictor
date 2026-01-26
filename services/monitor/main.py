@@ -60,16 +60,16 @@ class RaceMonitorService:
 
     async def check_races(self):
         """Check upcoming races and trigger analysis if needed."""
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Checking races...")
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Checking horse races...")
 
-        # Get next races
-        next_races = await self.parser.get_next_races()
+        # Get next races - only horse racing (not greyhounds or harness)
+        next_races = await self.parser.get_next_races(race_type="races")
 
         if not next_races:
-            print("  No upcoming races found")
+            print("  No upcoming horse races found")
             return
 
-        print(f"  Found {len(next_races)} upcoming races")
+        print(f"  Found {len(next_races)} upcoming horse races")
 
         # Check each race
         for race in next_races:
@@ -87,6 +87,9 @@ class RaceMonitorService:
         if not race.time_parsed:
             return
 
+        # Save race start time from the list (fallback if details page doesn't have it)
+        race_start_time_fallback = race.time_parsed
+
         now = datetime.now(race.time_parsed.tzinfo)
         time_until_race = (race.time_parsed - now).total_seconds() / 60  # minutes
 
@@ -102,7 +105,7 @@ class RaceMonitorService:
 
             # Get full race details
             try:
-                race_details = await self.parser.scrape_race_details(race_url)
+                race_details = await self.parser.get_race_details(race_url)
 
                 if race_details and race_details.runners:
                     # Format for AI analysis
@@ -112,7 +115,11 @@ class RaceMonitorService:
                     await self.publish_race_for_analysis(race_url, race_data)
 
                     # Schedule result check
-                    await self.schedule_result_check(race_url, race_details.start_time_parsed)
+                    start_time_for_check = race_details.start_time_parsed or race_start_time_fallback
+                    if start_time_for_check:
+                        await self.schedule_result_check(race_url, start_time_for_check)
+                    else:
+                        print(f"     ⚠ No start time available, cannot schedule result check")
 
                     # Mark as monitored
                     self.monitored_races.add(race_url)
