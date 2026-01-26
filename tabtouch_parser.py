@@ -51,7 +51,7 @@ def parse_race_time(time_str: str, date_str: str = None) -> datetime:
     Parse race time from TabTouch (always in Perth timezone)
 
     Args:
-        time_str: Time string like "05:12" or "5:12 AM"
+        time_str: Time string like "05:12", "5:12 AM", "46m", "6m 42s"
         date_str: Optional date string like "Sun 26 Jan"
 
     Returns:
@@ -61,7 +61,16 @@ def parse_race_time(time_str: str, date_str: str = None) -> datetime:
         # Parse time
         time_str = time_str.strip()
 
-        # Handle 24h format (e.g., "05:12")
+        # Handle countdown format (e.g., "46m", "6m 42s", "1h 30m")
+        countdown_match = re.match(r'^(?:(\d+)h\s*)?(?:(\d+)m)?(?:\s*(\d+)s)?$', time_str)
+        if countdown_match and any(countdown_match.groups()):
+            hours = int(countdown_match.group(1) or 0)
+            minutes = int(countdown_match.group(2) or 0)
+            seconds = int(countdown_match.group(3) or 0)
+            now = datetime.now(SOURCE_TIMEZONE)
+            return now + timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+        # Handle 24h format (e.g., "05:12" or "23:55")
         if ":" in time_str and len(time_str) <= 5:
             hour, minute = map(int, time_str.split(":"))
         # Handle 12h format (e.g., "5:12 AM")
@@ -291,21 +300,16 @@ class TabTouchParser:
         Args:
             race_type: "all", "races" (лошади), "trots" (рысаки), "dogs" (собаки)
         """
+        # Use dedicated tote page for specific race types (more reliable)
+        if race_type in ("races", "trots", "dogs"):
+            return await self._get_races_from_tote_page(race_type)
+
+        # For "all" - use next-events page
         await self.page.goto(f"{self.BASE_URL}/next-events", wait_until="domcontentloaded", timeout=60000)
         await self._wait_for_content(timeout=15000)
 
-        # Фильтр по типу (если нужен)
-        if race_type != "all":
-            try:
-                filter_btn = self.page.locator(f'button:has-text("{race_type}")')
-                if await filter_btn.count() > 0:
-                    await filter_btn.click()
-                    await asyncio.sleep(1)
-            except:
-                pass
-
         races = []
-        items = self.page.locator('ul > li > a[href*="/tote/meetings/"]')
+        items = self.page.locator('a[href*="/tote/meetings/"]')
         count = await items.count()
 
         for i in range(count):
@@ -315,7 +319,7 @@ class TabTouchParser:
                 text = await item.inner_text()
                 lines = [l.strip() for l in text.split("\n") if l.strip()]
 
-                # Парсинг текста: "05:12 SHEPPARTON R1 390m Sky TV 1"
+                # Парсинг текста: "-7s BURSA - TUR R5 2000m"
                 time_str = lines[0] if lines else ""
                 location = lines[1] if len(lines) > 1 else ""
                 race_info = lines[2] if len(lines) > 2 else ""
@@ -333,11 +337,128 @@ class TabTouchParser:
                     distance=distance,
                     channel=channel,
                     url=f"{self.BASE_URL}{href}" if href.startswith("/") else href,
-                    race_type=race_type,
+                    race_type="all",
                     time_parsed=parse_race_time(time_str)
                 ))
             except Exception as e:
                 print(f"Error parsing race item {i}: {e}")
+                continue
+
+        return races
+
+    async def _get_races_from_tote_page(self, race_type: str) -> list[NextRace]:
+        """
+        Получить список заездов со страницы /tote?code=<type>
+        Более надежный метод для фильтрации по типу скачек.
+
+        Args:
+            race_type: "races" (лошади), "trots" (рысаки), "dogs" (собаки)
+        """
+        await self.page.goto(
+            f"{self.BASE_URL}/tote?code={race_type}",
+            wait_until="domcontentloaded",
+            timeout=60000
+        )
+        await self._wait_for_content(timeout=15000)
+        await asyncio.sleep(2)  # Wait for dynamic content
+
+        races = []
+
+        # Use JavaScript to find races - Playwright CSS selectors have issues with this page
+        # Page structure (actual DOM):
+        # <div class="css-fe4mcg">  (grandparent container)
+        #   <button> (expand button)
+        #   <a href="/tote/races?..."> Location Name + Country </a>  (location link)
+        #   <div>  (parent wrapper)
+        #     <a href="/tote/meetings/XXX/N?..."> RN + Time </a>  (race link)
+        #   </div>
+        # </div>
+        race_data = await self.page.evaluate('''() => {
+            const results = [];
+
+            // Find all race links (upcoming races have /tote/meetings/ URLs)
+            const raceLinks = document.querySelectorAll('a[href*="/tote/meetings/"]');
+
+            raceLinks.forEach(raceLink => {
+                try {
+                    const href = raceLink.href;
+                    const raceText = raceLink.innerText.trim();
+
+                    // Location link is in grandparent (traverse up 2 levels)
+                    let ancestor = raceLink.parentElement;
+                    if (ancestor) ancestor = ancestor.parentElement;
+                    if (!ancestor) return;
+
+                    // Find location link in ancestor
+                    const locLink = ancestor.querySelector('a[href*="/tote/races?"]');
+                    if (!locLink) return;
+
+                    const locText = locLink.innerText.trim();
+
+                    // Skip if location contains "Resulted" or "Abandoned"
+                    if (locText.includes('Resulted') || locText.includes('Abandoned')) return;
+
+                    results.push({
+                        href: href,
+                        raceText: raceText,
+                        locText: locText
+                    });
+                } catch (e) {
+                    // Skip errors
+                }
+            });
+
+            return results;
+        }''')
+
+        for item in race_data:
+            try:
+                href = item['href']
+                race_text = item['raceText']
+                loc_text = item['locText']
+
+                # Parse race number from href: /tote/meetings/SRO/1?date=...
+                race_match = re.search(r'/meetings/(\w+)/(\d+)', href)
+                if not race_match:
+                    continue
+
+                race_num = race_match.group(2)
+                race_number = f"R{race_num}"
+
+                # Parse time from race text (e.g., "R1\n49m" or "R1\n23:55")
+                time_str = ""
+                time_match = re.search(r'R\d+\s*(.+)', race_text, re.DOTALL)
+                if time_match:
+                    time_str = time_match.group(1).strip()
+
+                # Parse location from location text (e.g., "Punchestown IRE" or "Punchestown\nIRE")
+                loc_parts = [p.strip() for p in re.split(r'[\n\s]+', loc_text) if p.strip()]
+                if not loc_parts:
+                    continue
+
+                # Usually: ["Location", "Name", "COUNTRY"] or ["Location Name", "COUNTRY"]
+                # Country code is typically 2-3 chars at the end
+                if len(loc_parts) > 1 and len(loc_parts[-1]) <= 3 and loc_parts[-1].isupper():
+                    country = loc_parts[-1]
+                    location = " ".join(loc_parts[:-1])
+                else:
+                    location = " ".join(loc_parts)
+                    country = ""
+
+                full_location = f"{location} {country}".strip() if country else location
+
+                races.append(NextRace(
+                    time=time_str,
+                    location=full_location,
+                    race_number=race_number,
+                    distance="",
+                    channel=None,
+                    url=href,
+                    race_type=race_type,
+                    time_parsed=parse_race_time(time_str)
+                ))
+            except Exception as e:
+                print(f"Error parsing race data: {e}")
                 continue
 
         return races
@@ -905,16 +1026,25 @@ class RaceTracker:
         self.db = RaceDatabase(db_path)
         self.headless = headless
 
-    async def get_upcoming_races(self, limit: int = 10) -> list[NextRace]:
-        """Получить список ближайших заездов"""
+    async def get_upcoming_races(self, limit: int = 10, race_type: str = "races") -> list[NextRace]:
+        """Получить список ближайших заездов
+
+        Args:
+            limit: Максимальное количество заездов
+            race_type: "all", "races" (лошади), "trots" (рысаки), "dogs" (собаки)
+        """
         async with TabTouchParser(headless=self.headless) as parser:
-            races = await parser.get_next_races()
+            races = await parser.get_next_races(race_type=race_type)
             return races[:limit]
 
-    async def get_next_race_details(self) -> Optional[RaceDetails]:
-        """Получить детали ближайшего заезда"""
+    async def get_next_race_details(self, race_type: str = "races") -> Optional[RaceDetails]:
+        """Получить детали ближайшего заезда
+
+        Args:
+            race_type: "all", "races" (лошади), "trots" (рысаки), "dogs" (собаки)
+        """
         async with TabTouchParser(headless=self.headless) as parser:
-            races = await parser.get_next_races()
+            races = await parser.get_next_races(race_type=race_type)
 
             if not races:
                 return None
