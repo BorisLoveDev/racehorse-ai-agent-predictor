@@ -1,12 +1,8 @@
-version: '3.8'
-
 services:
   # Redis for pub/sub messaging
   redis:
     image: redis:7-alpine
     container_name: racehorse-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -16,6 +12,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+    networks:
+      - racehorse-network
 
   # Race Monitor Service
   monitor:
@@ -31,10 +29,13 @@ services:
     environment:
       - RACEHORSE_REDIS__HOST=redis
       - RACEHORSE_REDIS__PORT=6379
+      - RACEHORSE_DATABASE__PATH=/app/data/races.db
     volumes:
-      - ./races.db:/app/races.db
-      - ./race_data:/app/race_data
+      - db_data:/app/data
+      - race_data:/app/race_data
     restart: unless-stopped
+    networks:
+      - racehorse-network
 
   # Agent Orchestrator Service
   orchestrator:
@@ -50,9 +51,12 @@ services:
     environment:
       - RACEHORSE_REDIS__HOST=redis
       - RACEHORSE_REDIS__PORT=6379
+      - RACEHORSE_DATABASE__PATH=/app/data/races.db
     volumes:
-      - ./races.db:/app/races.db
+      - db_data:/app/data
     restart: unless-stopped
+    networks:
+      - racehorse-network
 
   # Results Evaluation Service
   results:
@@ -68,9 +72,12 @@ services:
     environment:
       - RACEHORSE_REDIS__HOST=redis
       - RACEHORSE_REDIS__PORT=6379
+      - RACEHORSE_DATABASE__PATH=/app/data/races.db
     volumes:
-      - ./races.db:/app/races.db
+      - db_data:/app/data
     restart: unless-stopped
+    networks:
+      - racehorse-network
 
   # Telegram Notification Service
   telegram:
@@ -86,14 +93,21 @@ services:
     environment:
       - RACEHORSE_REDIS__HOST=redis
       - RACEHORSE_REDIS__PORT=6379
+      - RACEHORSE_DATABASE__PATH=/app/data/races.db
     volumes:
-      - ./races.db:/app/races.db
+      - db_data:/app/data
     restart: unless-stopped
+    networks:
+      - racehorse-network
 
 volumes:
   redis_data:
     driver: local
+  db_data:
+    driver: local
+  race_data:
+    driver: local
 
 networks:
-  default:
-    name: racehorse-network
+  racehorse-network:
+    driver: bridge
