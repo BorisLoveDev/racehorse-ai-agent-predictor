@@ -375,3 +375,210 @@ For issues or questions:
 ## License
 
 MIT License - See LICENSE file
+
+---
+
+# Telegram Bot Improvements - Deployment Guide (January 2026)
+
+## Overview
+
+This deployment includes significant enhancements to the Telegram bot:
+- Odds display in predictions
+- Dividend comparison in results
+- Interactive bot commands (/races, /status, /history, /stats)
+- P/L charts with matplotlib
+
+## Pre-Deployment Steps
+
+### 1. Database Migration
+
+The database schema has been updated. Run migrations:
+
+```bash
+source venv/bin/activate
+python src/database/migrations.py
+```
+
+Expected output:
+```
+✓ Added odds_snapshot_json to predictions table
+✓ Added actual_dividends_json to prediction_outcomes table
+✓ Database migrations completed successfully
+```
+
+**Note:** If columns already exist, the migration will skip them safely.
+
+### 2. Update Virtual Environment (Development)
+
+If running in development mode (not Docker):
+
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+This installs matplotlib and its dependencies.
+
+## Docker Deployment
+
+### 1. Rebuild Base Image
+
+The base image includes new system dependencies for matplotlib:
+
+```bash
+docker build -f Dockerfile.base -t racehorse-base:latest .
+```
+
+This will take a few minutes as it installs:
+- matplotlib Python package
+- libfreetype6-dev (system dependency)
+- pkg-config (system dependency)
+
+### 2. Restart Services
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+### 3. Verify Services
+
+Check that all services started successfully:
+
+```bash
+docker compose ps
+```
+
+All services should show status "Up".
+
+### 4. Check Logs
+
+Monitor logs for any errors:
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f telegram
+```
+
+## New Features
+
+### Interactive Commands
+
+Users can now interact with the bot using these commands:
+
+1. **`/races`** - Show upcoming races
+   - Lists next 10 upcoming races with times
+
+2. **`/status`** - Show active bets
+   - Displays predictions awaiting results
+   - Shows race location, number, and agent
+
+3. **`/history [N]`** - Show recent results
+   - Default: last 5 results
+   - Max: 20 results
+   - Shows P/L for each prediction
+
+4. **`/stats [period]`** - Show statistics with chart
+   - Periods: `all`, `today`, `3d`, `week`
+   - Includes cumulative P/L chart
+   - Shows win rate, ROI, and P/L by agent
+
+### Enhanced Predictions
+
+Prediction messages now show:
+- Odds for each bet type (e.g., `@2.30`)
+- Potential payout (e.g., `pot: $230`)
+- Total bet amount and potential return
+
+Example:
+```
+💰 Win #3 @2.30 → $100 (pot: $230)
+📍 Place #3 @1.40 → $50 (pot: $70)
+
+Total: $150 | Potential: $300
+```
+
+### Enhanced Results
+
+Result messages now show:
+- Odds comparison (predicted vs actual)
+- Visual indicators for wins/losses
+
+Example:
+```
+✅ Win: @2.30 → @2.10 = +$210
+❌ Place: @1.40 → @1.20
+```
+
+## Verification Checklist
+
+After deployment, verify:
+
+- [ ] Database migrations completed without errors
+- [ ] All Docker containers running
+- [ ] Telegram bot responds to commands
+- [ ] `/races` shows upcoming races
+- [ ] `/status` shows pending predictions (or "no active bets")
+- [ ] `/history` shows recent results
+- [ ] `/stats all` displays chart and statistics
+- [ ] Prediction messages show odds
+- [ ] Result messages show odds comparison
+
+## Rollback Plan
+
+If issues occur, rollback to previous version:
+
+```bash
+git checkout HEAD~1
+docker build -f Dockerfile.base -t racehorse-base:latest .
+docker compose down
+docker compose up -d
+```
+
+The new database columns are nullable, so they won't break old code.
+
+## Troubleshooting
+
+### Issue: Matplotlib import error
+
+**Solution:** Rebuild Docker base image:
+```bash
+docker build -f Dockerfile.base -t racehorse-base:latest .
+```
+
+### Issue: Bot doesn't respond to commands
+
+**Check:**
+1. Telegram service logs: `docker compose logs telegram`
+2. Verify bot token is correct in `.env`
+3. Ensure bot has been started with BotFather
+
+### Issue: Charts don't display
+
+**Check:**
+1. Matplotlib installed: `docker compose exec telegram python -c "import matplotlib; print('OK')"`
+2. Check for errors in `/stats` command logs
+
+### Issue: Database migration fails
+
+**Solution:**
+1. Check if columns already exist: `sqlite3 races.db "PRAGMA table_info(predictions);"`
+2. Manually add if needed (migrations are idempotent)
+
+## Performance Notes
+
+- Chart generation is lightweight (~50KB PNG)
+- Commands respond in < 1 second
+- No impact on prediction/results processing
+- Parser initialization for `/races` may take 2-3 seconds on first call
+
+## Next Steps
+
+After successful deployment:
+1. Monitor bot usage metrics
+2. Gather user feedback on commands
+3. Consider additional periods for `/stats` (e.g., month, year)
+4. Consider adding more chart types (win rate over time, bet type performance)
