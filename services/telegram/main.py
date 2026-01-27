@@ -28,6 +28,10 @@ from src.database.repositories import (
     StatisticsRepository
 )
 from services.telegram.charts import generate_pl_chart
+from src.logging_config import setup_logging
+
+# Initialize logger
+logger = setup_logging("telegram")
 
 
 class TelegramNotificationService:
@@ -75,7 +79,7 @@ class TelegramNotificationService:
         @self.router.message(Command("start"))
         async def cmd_start(message: Message):
             """Handle /start command."""
-            print(f"[DEBUG] Received /start from chat {message.chat.id}")
+            logger.info(f"Received /start from chat_id={message.chat.id}")
             lines = [
                 "<b>🏇 Racehorse Betting Agent</b>",
                 "",
@@ -131,6 +135,7 @@ class TelegramNotificationService:
 
                 await message.answer("\n".join(lines))
             except Exception as e:
+                logger.error(f"Error in /races command: {e}", exc_info=True)
                 await message.answer(f"Error fetching races: {e}")
 
         @self.router.message(Command("status"))
@@ -154,6 +159,7 @@ class TelegramNotificationService:
 
                 await message.answer("\n".join(lines))
             except Exception as e:
+                logger.error(f"Error in /status command: {e}", exc_info=True)
                 await message.answer(f"Error fetching status: {e}")
 
         @self.router.message(Command("history"))
@@ -183,6 +189,7 @@ class TelegramNotificationService:
 
                 await message.answer("\n".join(lines))
             except Exception as e:
+                logger.error(f"Error in /history command: {e}", exc_info=True)
                 await message.answer(f"Error fetching history: {e}")
 
         @self.router.message(Command("stats"))
@@ -236,6 +243,7 @@ class TelegramNotificationService:
                     await message.answer(stats_text)
 
             except Exception as e:
+                logger.error(f"Error in /stats command: {e}", exc_info=True)
                 await message.answer(f"Error fetching statistics: {e}")
 
         @self.router.message(Command("evaluate"))
@@ -284,7 +292,7 @@ class TelegramNotificationService:
                                 skipped += 1
 
                     except Exception as e:
-                        print(f"Error evaluating {race_url}: {e}")
+                        logger.error(f"Error evaluating race | url={race_url} | error={e}", exc_info=True)
                         skipped += len(predictions)
 
                 lines = [
@@ -296,6 +304,7 @@ class TelegramNotificationService:
                 await message.answer("\n".join(lines))
 
             except Exception as e:
+                logger.error(f"Error in /evaluate command: {e}", exc_info=True)
                 await message.answer(f"Error during evaluation: {e}")
 
     async def _evaluate_prediction_for_cmd(self, prediction: dict, race_result) -> bool:
@@ -488,20 +497,20 @@ class TelegramNotificationService:
             "results:evaluated"
         )
 
-        print(f"✓ Telegram Notification Service started")
-        print(f"  Chat ID: {self.chat_id}")
-        print(f"  Listening for notifications and commands...")
+        logger.info("Telegram Notification Service started")
+        logger.info(f"Chat ID: {self.chat_id}")
+        logger.info("Listening for notifications and commands...")
 
         # Verify bot connection
         try:
             bot_info = await self.bot.get_me()
-            print(f"  Bot: @{bot_info.username} (ID: {bot_info.id})")
+            logger.info(f"Bot connected | username=@{bot_info.username} | id={bot_info.id}")
         except Exception as e:
-            print(f"  ✗ Failed to connect to Telegram: {e}")
+            logger.error(f"Failed to connect to Telegram: {e}", exc_info=True)
             return
 
         # Start both polling (for commands) and listening (for Redis)
-        print("  Starting polling...")
+        logger.info("Starting polling...")
         await asyncio.gather(
             self.dp.start_polling(self.bot),
             self.listen_loop()
@@ -521,14 +530,14 @@ class TelegramNotificationService:
                         await self.handle_results_evaluated(data)
 
                 except Exception as e:
-                    print(f"✗ Error processing notification: {e}")
+                    logger.error(f"Error processing notification: {e}", exc_info=True)
 
     async def handle_new_predictions(self, data: dict):
         """Handle new prediction notification."""
         race_url = data["race_url"]
         predictions = data["predictions"]
 
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Sending prediction notifications...")
+        logger.info(f"Sending prediction notifications | url={race_url} | count={len(predictions)}")
 
         for pred_info in predictions:
             agent_name = pred_info["agent_name"]
@@ -537,19 +546,20 @@ class TelegramNotificationService:
             # Get full prediction data
             prediction = self.prediction_repo.get_prediction(prediction_id)
             if not prediction:
+                logger.warning(f"Prediction not found | prediction_id={prediction_id}")
                 continue
 
             # Format and send message
             message = self._format_prediction_message(prediction)
             await self.send_message(message)
-            print(f"  ✓ Sent {agent_name} prediction")
+            logger.info(f"Sent prediction | agent={agent_name} | prediction_id={prediction_id}")
 
     async def handle_results_evaluated(self, data: dict):
         """Handle results evaluation notification."""
         race_url = data["race_url"]
         predictions = data["predictions"]
 
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Sending result notifications...")
+        logger.info(f"Sending result notifications | url={race_url} | count={len(predictions)}")
 
         for pred_info in predictions:
             agent_name = pred_info["agent_name"]
@@ -560,12 +570,13 @@ class TelegramNotificationService:
             outcome = self.outcome_repo.get_outcome(prediction_id)
 
             if not prediction or not outcome:
+                logger.warning(f"Prediction or outcome not found | prediction_id={prediction_id}")
                 continue
 
             # Format and send message
             message = self._format_result_message(prediction, outcome)
             await self.send_message(message)
-            print(f"  ✓ Sent {agent_name} result")
+            logger.info(f"Sent result | agent={agent_name} | prediction_id={prediction_id}")
 
     def _format_prediction_message(self, prediction: dict) -> str:
         """Format prediction as Telegram message."""
@@ -797,7 +808,7 @@ class TelegramNotificationService:
                 text=text
             )
         except Exception as e:
-            print(f"✗ Failed to send Telegram message: {e}")
+            logger.error(f"Failed to send Telegram message: {e}", exc_info=True)
 
     async def shutdown(self):
         """Shutdown the service."""
@@ -809,7 +820,7 @@ class TelegramNotificationService:
         if self.parser:
             await self.parser.__aexit__(None, None, None)
         await self.bot.session.close()
-        print("\n✓ Telegram service stopped")
+        logger.info("Telegram service stopped")
 
 
 async def main():
@@ -818,7 +829,7 @@ async def main():
     try:
         await service.start()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        logger.info("Shutting down...")
         await service.shutdown()
 
 

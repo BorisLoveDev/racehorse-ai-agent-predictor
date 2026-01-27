@@ -1,0 +1,67 @@
+{
+  "finishing_order": [
+    {
+      "number": 1,
+      "name": "Thunder Strike",
+      "position": 1,
+      "fixed_win": 3.60,
+      "fixed_place": 1.65,
+      "tote_win": 3.50,
+      "tote_place": 1.60
+    },
+    {
+      "number": 3,
+      "name": "Golden Flash",
+      "position": 2,
+      "fixed_win": 4.20,
+      "fixed_place": 1.90,
+      "tote_win": 4.10,
+      "tote_place": 1.85
+    },
+    {
+      "number": 2,
+      "name": "Silver Arrow",
+      "position": 3,
+      "fixed_win": 5.00,
+      "fixed_place": 2.05,
+      "tote_win": 5.30,
+      "tote_place": 2.15
+    },
+    {
+      "number": 4,
+      "name": "Dark Knight",
+      "position": 4,
+      "fixed_win": 8.00,
+      "fixed_place": 2.80,
+      "tote_win": 8.70,
+      "tote_place": 2.95
+    },
+    {
+      "number": 6,
+      "name": "Lucky Charm",
+      "position": 5,
+      "fixed_win": 15.00,
+      "fixed_place": 4.00,
+      "tote_win": 16.50,
+      "tote_place": 4.40
+    },
+    {
+      "number": 5,
+      "name": "Storm Chaser",
+      "position": 6,
+      "fixed_win": 11.00,
+      "fixed_place": 3.20,
+      "tote_win": 10.80,
+      "tote_place": 3.15
+    }
+  ],
+  "dividends": {
+    "win": 3.60,
+    "place": [1.65, 1.90, 2.05],
+    "exacta": 18.50,
+    "quinella": 9.80,
+    "trifecta": 85.20,
+    "first4": 320.40,
+    "qps": 4.50
+  }
+}

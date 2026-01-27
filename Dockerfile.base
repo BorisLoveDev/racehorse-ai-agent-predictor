@@ -41,8 +41,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install Playwright browsers
 RUN playwright install chromium
 
-# Copy application code
-COPY . .
+# NOTE: Source code is NOT copied here - each service Dockerfile copies code
+# This ensures `docker compose up --build` picks up code changes without
+# rebuilding the base image
 
 # Set Python path
 ENV PYTHONPATH=/app

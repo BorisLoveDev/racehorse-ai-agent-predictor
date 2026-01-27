@@ -18,6 +18,10 @@ from src.agents.gemini_agent import GeminiAgent
 from src.agents.grok_agent import GrokAgent
 from src.config.settings import get_settings
 from src.database.repositories import PredictionRepository
+from src.logging_config import setup_logging
+
+# Initialize logger
+logger = setup_logging("orchestrator")
 
 
 class AgentOrchestratorService:
@@ -29,10 +33,10 @@ class AgentOrchestratorService:
         self.pubsub = None
 
         # Initialize agents
-        print("Initializing AI agents...")
+        logger.info("Initializing AI agents...")
         self.gemini_agent = GeminiAgent()
         self.grok_agent = GrokAgent()
-        print("✓ Agents initialized")
+        logger.info("Agents initialized")
 
         # Initialize database repository
         self.prediction_repo = PredictionRepository(
@@ -54,8 +58,8 @@ class AgentOrchestratorService:
         self.pubsub = self.redis_client.pubsub()
         await self.pubsub.subscribe("race:ready_for_analysis")
 
-        print(f"✓ Agent Orchestrator Service started")
-        print(f"  Listening for races to analyze...")
+        logger.info("Agent Orchestrator Service started")
+        logger.info("Listening for races to analyze...")
 
         # Start listening loop
         await self.listen_loop()
@@ -68,21 +72,20 @@ class AgentOrchestratorService:
                     data = json.loads(message["data"])
                     await self.process_race(data)
                 except Exception as e:
-                    print(f"✗ Error processing message: {e}")
+                    logger.error(f"Error processing message: {e}", exc_info=True)
 
     async def process_race(self, data: dict):
         """Process a race with both agents."""
         race_url = data["race_url"]
         race_data = data["race_data"]
 
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Processing race:")
-        print(f"  {race_data['race_info']['location']} R{race_data['race_info']['race_number']}")
-        print(f"  URL: {race_url}")
+        race_info = race_data['race_info']
+        logger.info(f"Processing race | location={race_info['location']} | race_number=R{race_info['race_number']} | url={race_url}")
 
         # Run both agents
         if self.settings.agents.parallel_execution:
             # Parallel execution
-            print(f"  Running agents in parallel...")
+            logger.info("Running agents in parallel...")
             results = await asyncio.gather(
                 self.run_agent(self.gemini_agent, race_data),
                 self.run_agent(self.grok_agent, race_data),
@@ -92,7 +95,7 @@ class AgentOrchestratorService:
             gemini_result, grok_result = results
         else:
             # Sequential execution
-            print(f"  Running agents sequentially...")
+            logger.info("Running agents sequentially...")
             gemini_result = await self.run_agent(self.gemini_agent, race_data)
             grok_result = await self.run_agent(self.grok_agent, race_data)
 
@@ -106,9 +109,9 @@ class AgentOrchestratorService:
                 gemini_result
             )
             predictions_saved.append(("Gemini", pred_id))
-            print(f"  ✓ Gemini prediction saved (ID: {pred_id})")
+            logger.info(f"Gemini prediction saved | prediction_id={pred_id} | confidence={gemini_result.confidence_score:.2f}")
         else:
-            print(f"  ✗ Gemini failed: {gemini_result}")
+            logger.error(f"Gemini failed | error={gemini_result}")
 
         if not isinstance(grok_result, Exception) and grok_result:
             pred_id = await self.save_prediction(
@@ -117,33 +120,31 @@ class AgentOrchestratorService:
                 grok_result
             )
             predictions_saved.append(("Grok", pred_id))
-            print(f"  ✓ Grok prediction saved (ID: {pred_id})")
+            logger.info(f"Grok prediction saved | prediction_id={pred_id} | confidence={grok_result.confidence_score:.2f}")
         else:
-            print(f"  ✗ Grok failed: {grok_result}")
+            logger.error(f"Grok failed | error={grok_result}")
 
         # Publish predictions to Telegram service
         if predictions_saved:
             await self.publish_predictions(race_url, predictions_saved)
-            print(f"  ✓ Published {len(predictions_saved)} predictions to Telegram")
+            logger.info(f"Published {len(predictions_saved)} predictions to Telegram")
 
     async def run_agent(self, agent, race_data: dict):
         """Run a single agent on race data."""
         try:
-            print(f"    → {agent.agent_name.capitalize()} analyzing...")
+            logger.info(f"Agent analyzing | agent={agent.agent_name}")
             structured_bet = await agent.analyze_race(race_data)
 
             # Validate confidence threshold
             if structured_bet.confidence_score < self.settings.betting.min_confidence_to_bet:
-                print(f"    ⚠ {agent.agent_name.capitalize()} confidence too low: "
-                      f"{structured_bet.confidence_score:.2f}")
+                logger.warning(f"Confidence too low | agent={agent.agent_name} | confidence={structured_bet.confidence_score:.2f} | threshold={self.settings.betting.min_confidence_to_bet}")
                 return None
 
-            print(f"    ✓ {agent.agent_name.capitalize()} complete "
-                  f"(confidence: {structured_bet.confidence_score:.2f})")
+            logger.info(f"Agent complete | agent={agent.agent_name} | confidence={structured_bet.confidence_score:.2f}")
             return structured_bet
 
         except Exception as e:
-            print(f"    ✗ {agent.agent_name.capitalize()} error: {e}")
+            logger.error(f"Agent error | agent={agent.agent_name} | error={e}", exc_info=True)
             return e
 
     def _build_odds_snapshot(self, race_data: dict, structured_bet) -> dict:
@@ -170,7 +171,7 @@ class AgentOrchestratorService:
 
         # Quinella
         if structured_bet.quinella_bet:
-            horses = sorted([structured_bet.quinella_bet.first, structured_bet.quinella_bet.second])
+            horses = structured_bet.quinella_bet.horses  # already sorted by model validator
             key = f"{horses[0]}-{horses[1]}"
             snapshot["quinella"] = {key: None}
 
@@ -181,12 +182,14 @@ class AgentOrchestratorService:
 
         # First 4
         if structured_bet.first4_bet:
-            key = f"{structured_bet.first4_bet.first}-{structured_bet.first4_bet.second}-{structured_bet.first4_bet.third}-{structured_bet.first4_bet.fourth}"
+            horses = structured_bet.first4_bet.horses  # list of 4 horses in exact order
+            key = f"{horses[0]}-{horses[1]}-{horses[2]}-{horses[3]}"
             snapshot["first4"] = {key: None}
 
         # QPS
         if structured_bet.qps_bet:
-            key = f"{structured_bet.qps_bet.first}-{structured_bet.qps_bet.second}-{structured_bet.qps_bet.third}-{structured_bet.qps_bet.fourth}"
+            horses = structured_bet.qps_bet.horses  # 2-4 horses, already sorted
+            key = "-".join(str(h) for h in horses)
             snapshot["qps"] = {key: None}
 
         return snapshot
@@ -207,14 +210,17 @@ class AgentOrchestratorService:
         # Extract odds snapshot
         odds_snapshot = self._build_odds_snapshot(race_data, structured_bet)
 
-        # Get race start time with fallback
-        # If start_time_iso is None (parser couldn't extract it), use current time as fallback
-        # This ensures race_start_time is never empty in the database
+        # Get race start time - prefer start_time_iso, fallback to current time
+        # This is used by Results service to schedule result checks
         race_start_time = race_info.get("start_time_iso")
         if not race_start_time:
-            # Use current UTC time as fallback - race is imminent anyway
+            # BUG FIX: Previously used datetime.utcnow() which could cause
+            # immediate result checks. Now we log a warning but still use
+            # current time as last resort (race is imminent anyway).
+            # The Monitor service should always provide start_time_iso from
+            # race.time_parsed fallback, so this branch should rarely execute.
             race_start_time = datetime.utcnow().isoformat() + "Z"
-            print(f"    ⚠ Using fallback race_start_time: {race_start_time}")
+            logger.warning(f"Using fallback race_start_time | race={race_info.get('location')} R{race_info.get('race_number')} | fallback_time={race_start_time}")
 
         prediction_id = self.prediction_repo.save_prediction(
             agent_name=agent_name,
@@ -249,7 +255,7 @@ class AgentOrchestratorService:
             await self.pubsub.close()
         if self.redis_client:
             await self.redis_client.close()
-        print("\n✓ Orchestrator service stopped")
+        logger.info("Orchestrator service stopped")
 
 
 async def main():
@@ -258,7 +264,7 @@ async def main():
     try:
         await service.start()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        logger.info("Shutting down...")
         await service.shutdown()
 
 

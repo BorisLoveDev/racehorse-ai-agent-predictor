@@ -17,6 +17,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import redis.asyncio as aioredis
 from tabtouch_parser import TabTouchParser
 from src.config.settings import get_settings
+from src.logging_config import setup_logging
+
+# Initialize logger
+logger = setup_logging("monitor")
 
 
 class RaceMonitorService:
@@ -39,9 +43,9 @@ class RaceMonitorService:
             decode_responses=True
         )
 
-        print(f"✓ Race Monitor Service started")
-        print(f"  Checking races every {self.settings.timing.monitor_poll_interval}s")
-        print(f"  Triggering analysis: {self.settings.timing.minutes_before_race + 2} min before to 1 min after race start")
+        logger.info("Race Monitor Service started")
+        logger.info(f"Checking races every {self.settings.timing.monitor_poll_interval}s")
+        logger.info(f"Trigger window: {self.settings.timing.minutes_before_race + 2} min before to 1 min after race start")
 
         # Start monitoring loop
         await self.monitor_loop()
@@ -53,23 +57,23 @@ class RaceMonitorService:
                 try:
                     await self.check_races()
                 except Exception as e:
-                    print(f"✗ Error in monitor loop: {e}")
+                    logger.error(f"Error in monitor loop: {e}", exc_info=True)
 
                 # Wait before next check
                 await asyncio.sleep(self.settings.timing.monitor_poll_interval)
 
     async def check_races(self):
         """Check upcoming races and trigger analysis if needed."""
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Checking horse races...")
+        logger.info("Checking horse races...")
 
         # Get next races - only horse racing (not greyhounds or harness)
         next_races = await self.parser.get_next_races(race_type="races")
 
         if not next_races:
-            print("  No upcoming horse races found")
+            logger.info("No upcoming horse races found")
             return
 
-        print(f"  Found {len(next_races)} upcoming horse races")
+        logger.info(f"Found {len(next_races)} upcoming horse races")
 
         # Check each race
         for race in next_races:
@@ -99,9 +103,7 @@ class RaceMonitorService:
         trigger_window_end = -1   # up to 1 minute after race start is OK
 
         if trigger_window_end <= time_until_race <= trigger_window_start:
-            print(f"\n  → Triggering analysis for: {race.location} R{race.race_number}")
-            print(f"     Race starts in {time_until_race:.1f} minutes")
-            print(f"     URL: {race_url}")
+            logger.info(f"Triggering analysis | race={race.location} R{race.race_number} | time_until={time_until_race:.1f}min | url={race_url}")
 
             # Get full race details
             try:
@@ -119,22 +121,22 @@ class RaceMonitorService:
                     if start_time_for_check:
                         await self.schedule_result_check(race_url, start_time_for_check)
                     else:
-                        print(f"     ⚠ No start time available, cannot schedule result check")
+                        logger.warning(f"No start time available, cannot schedule result check | race={race.location} R{race.race_number}")
 
                     # Mark as monitored
                     self.monitored_races.add(race_url)
 
-                    print(f"     ✓ Published to orchestrator")
+                    logger.info(f"Published to orchestrator | race={race.location} R{race.race_number} | runners={len(race_details.runners)}")
                 else:
-                    print(f"     ✗ No runners found")
+                    logger.warning(f"No runners found | race={race.location} R{race.race_number} | url={race_url}")
 
             except Exception as e:
-                print(f"     ✗ Error: {e}")
+                logger.error(f"Error processing race | race={race.location} R{race.race_number} | error={e}", exc_info=True)
 
         elif time_until_race < trigger_window_end:
             # Race started more than 1 minute ago - too late
             if race_url not in self.monitored_races:
-                print(f"  ⚠ Race already started: {race.location} R{race.race_number} ({time_until_race:.1f} min)")
+                logger.warning(f"Race already started | race={race.location} R{race.race_number} | time_since={abs(time_until_race):.1f}min")
                 self.monitored_races.add(race_url)  # Mark to avoid spam
 
     def _format_race_data(self, race_details) -> dict:
@@ -203,12 +205,14 @@ class RaceMonitorService:
             json.dumps(message)
         )
 
+        logger.info(f"Scheduled result check | url={race_url} | check_at={check_time.strftime('%H:%M:%S')}")
+
     async def shutdown(self):
         """Shutdown the service."""
         if self.redis_client:
             await self.redis_client.close()
         await self.parser.__aexit__(None, None, None)
-        print("\n✓ Monitor service stopped")
+        logger.info("Monitor service stopped")
 
 
 async def main():
@@ -217,7 +221,7 @@ async def main():
     try:
         await service.start()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        logger.info("Shutting down...")
         await service.shutdown()
 
 

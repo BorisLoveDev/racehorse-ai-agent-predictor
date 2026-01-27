@@ -1,0 +1,108 @@
+{
+  "race_info": {
+    "location": "TestTrack",
+    "date": "2025-01-27",
+    "race_number": 3,
+    "race_name": "Test Handicap",
+    "distance": "1400m",
+    "track_condition": "Good 4",
+    "race_type": "Thoroughbred",
+    "start_time": "14:30",
+    "start_time_iso": "2025-01-27T06:30:00+00:00",
+    "url": "https://www.tabtouch.mobi/racing/race/test-track/2025-01-27/3"
+  },
+  "runners": [
+    {
+      "number": 1,
+      "name": "Thunder Strike",
+      "form": "2113",
+      "barrier": 3,
+      "weight": "58.5",
+      "jockey": "W. Pike",
+      "trainer": "D. Weir",
+      "rating": 72,
+      "fixed_win": 3.50,
+      "fixed_place": 1.60,
+      "tote_win": 3.40,
+      "tote_place": 1.55
+    },
+    {
+      "number": 2,
+      "name": "Silver Arrow",
+      "form": "4521",
+      "barrier": 7,
+      "weight": "56.0",
+      "jockey": "J. Brown",
+      "trainer": "M. Newnham",
+      "rating": 70,
+      "fixed_win": 5.00,
+      "fixed_place": 2.00,
+      "tote_win": 5.20,
+      "tote_place": 2.10
+    },
+    {
+      "number": 3,
+      "name": "Golden Flash",
+      "form": "1341",
+      "barrier": 1,
+      "weight": "55.0",
+      "jockey": "H. Bowman",
+      "trainer": "C. Waller",
+      "rating": 68,
+      "fixed_win": 4.20,
+      "fixed_place": 1.80,
+      "tote_win": 4.00,
+      "tote_place": 1.75
+    },
+    {
+      "number": 4,
+      "name": "Dark Knight",
+      "form": "3214",
+      "barrier": 5,
+      "weight": "54.0",
+      "jockey": "D. Oliver",
+      "trainer": "L. Price",
+      "rating": 66,
+      "fixed_win": 8.00,
+      "fixed_place": 2.80,
+      "tote_win": 8.50,
+      "tote_place": 2.90
+    },
+    {
+      "number": 5,
+      "name": "Storm Chaser",
+      "form": "5432",
+      "barrier": 2,
+      "weight": "53.5",
+      "jockey": "C. Williams",
+      "trainer": "P. Stokes",
+      "rating": 64,
+      "fixed_win": 11.00,
+      "fixed_place": 3.20,
+      "tote_win": 10.50,
+      "tote_place": 3.10
+    },
+    {
+      "number": 6,
+      "name": "Lucky Charm",
+      "form": "6152",
+      "barrier": 6,
+      "weight": "52.0",
+      "jockey": "B. Shinn",
+      "trainer": "J. Pride",
+      "rating": 62,
+      "fixed_win": 15.00,
+      "fixed_place": 4.00,
+      "tote_win": 16.00,
+      "tote_place": 4.20
+    }
+  ],
+  "pool_totals": {
+    "win": 125000,
+    "place": 95000,
+    "exacta": 45000,
+    "quinella": 35000,
+    "trifecta": 28000,
+    "first4": 15000
+  }
+}

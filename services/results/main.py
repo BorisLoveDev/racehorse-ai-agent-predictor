@@ -7,7 +7,7 @@ Waits for races to finish, fetches results, evaluates predictions, and updates s
 import asyncio
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Add parent directory to path
@@ -17,6 +17,23 @@ import redis.asyncio as aioredis
 from tabtouch_parser import TabTouchParser
 from src.config.settings import get_settings
 from src.database.repositories import PredictionRepository, OutcomeRepository
+from src.logging_config import setup_logging
+
+# Initialize logger
+logger = setup_logging("results")
+
+
+def to_utc_naive(dt: datetime) -> datetime:
+    """
+    Convert any datetime to UTC naive datetime for comparison.
+
+    This ensures consistent comparison regardless of timezone-awareness.
+    """
+    if dt.tzinfo is None:
+        # Assume naive datetime is already UTC
+        return dt
+    # Convert to UTC and strip timezone
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 class ResultsEvaluationService:
@@ -54,14 +71,14 @@ class ResultsEvaluationService:
         self.pubsub = self.redis_client.pubsub()
         await self.pubsub.subscribe("race:schedule_result_check")
 
-        print(f"✓ Results Evaluation Service started")
+        logger.info("Results Evaluation Service started")
 
         # Restore scheduled checks from database on startup
         restored = await self.restore_scheduled_checks()
         if restored:
-            print(f"  Restored {restored} pending result checks from database")
+            logger.info(f"Restored {restored} pending result checks from database")
 
-        print(f"  Listening for result checks...")
+        logger.info("Listening for result checks...")
 
         async with self.parser:
             # Start both loops
@@ -79,7 +96,6 @@ class ResultsEvaluationService:
             cursor = conn.cursor()
 
             # Find all races with predictions but no outcomes
-            # Include races even with empty race_start_time
             cursor.execute('''
                 SELECT DISTINCT p.race_url, p.race_start_time, p.created_at
                 FROM predictions p
@@ -89,6 +105,8 @@ class ResultsEvaluationService:
             ''')
 
             count = 0
+            now_utc = datetime.utcnow()
+
             for row in cursor.fetchall():
                 race_url, race_start_str, created_at_str = row
 
@@ -100,43 +118,43 @@ class ResultsEvaluationService:
                             minutes=self.settings.timing.result_wait_minutes
                         )
 
+                        # Convert to UTC naive for comparison
+                        check_time_utc = to_utc_naive(check_time)
+
                         # Only schedule if check time hasn't passed by more than 24 hours
-                        now = datetime.now(tz=check_time.tzinfo)
-                        if now - check_time < timedelta(hours=24):
+                        if now_utc - check_time_utc < timedelta(hours=24):
                             self.scheduled_checks[race_url] = {
                                 "check_time": check_time,
                                 "retry_count": 0
                             }
                             count += 1
+                            logger.debug(f"Restored check | url={race_url} | check_at={check_time.isoformat()}")
                     else:
                         # race_start_time is empty - use created_at as fallback
-                        # If prediction was created more than 15 minutes ago, check now
                         if created_at_str:
                             created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
-                            now = datetime.utcnow()
-                            if created_at.tzinfo:
-                                now = datetime.now(tz=created_at.tzinfo)
+                            created_at_utc = to_utc_naive(created_at)
 
-                            age_minutes = (now - created_at).total_seconds() / 60
+                            age_minutes = (now_utc - created_at_utc).total_seconds() / 60
 
                             # If old enough (race likely finished), schedule immediate check
                             if age_minutes >= self.settings.timing.result_wait_minutes:
                                 self.scheduled_checks[race_url] = {
-                                    "check_time": datetime.now(),
+                                    "check_time": datetime.utcnow(),
                                     "retry_count": 0
                                 }
                                 count += 1
-                                print(f"  ⚠ Scheduling check for {race_url} (empty race_start_time, created {age_minutes:.0f}m ago)")
+                                logger.warning(f"Scheduling immediate check | url={race_url} | reason=empty_race_start_time | age={age_minutes:.0f}min")
 
                 except Exception as e:
-                    print(f"  ⚠ Error parsing time for {race_url}: {e}")
+                    logger.error(f"Error parsing time | url={race_url} | error={e}", exc_info=True)
                     continue
 
             conn.close()
             return count
 
         except Exception as e:
-            print(f"  ✗ Error restoring scheduled checks: {e}")
+            logger.error(f"Error restoring scheduled checks: {e}", exc_info=True)
             return 0
 
     async def listen_loop(self):
@@ -154,12 +172,10 @@ class ResultsEvaluationService:
                         "retry_count": 0
                     }
 
-                    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Scheduled result check:")
-                    print(f"  Race: {race_url}")
-                    print(f"  Check at: {check_time.strftime('%H:%M:%S')}")
+                    logger.info(f"Scheduled result check | url={race_url} | check_at={check_time.strftime('%H:%M:%S')}")
 
                 except Exception as e:
-                    print(f"✗ Error scheduling check: {e}")
+                    logger.error(f"Error scheduling check: {e}", exc_info=True)
 
     async def check_results_loop(self):
         """Periodically check for races that need results evaluation."""
@@ -172,12 +188,8 @@ class ResultsEvaluationService:
                 for race_url, check_info in list(self.scheduled_checks.items()):
                     check_time = check_info["check_time"]
 
-                    # Convert check_time to UTC for comparison
-                    if check_time.tzinfo:
-                        # Convert timezone-aware to UTC naive for comparison
-                        check_time_utc = (check_time - check_time.utcoffset()).replace(tzinfo=None)
-                    else:
-                        check_time_utc = check_time
+                    # Convert check_time to UTC naive for comparison
+                    check_time_utc = to_utc_naive(check_time)
 
                     if now_utc >= check_time_utc:
                         races_to_check.append(race_url)
@@ -187,7 +199,7 @@ class ResultsEvaluationService:
                     await self.check_race_results(race_url)
 
             except Exception as e:
-                print(f"✗ Error in check loop: {e}")
+                logger.error(f"Error in check loop: {e}", exc_info=True)
 
             # Check every minute
             await asyncio.sleep(60)
@@ -197,22 +209,20 @@ class ResultsEvaluationService:
         check_info = self.scheduled_checks[race_url]
         retry_count = check_info["retry_count"]
 
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Checking results:")
-        print(f"  Race: {race_url}")
-        print(f"  Attempt: {retry_count + 1}/{self.settings.timing.result_max_retries}")
+        logger.info(f"Checking results | url={race_url} | attempt={retry_count + 1}/{self.settings.timing.result_max_retries}")
 
         try:
             # Try to fetch results
             race_result = await self.parser.get_race_results(race_url)
 
             if race_result and race_result.finishing_order:
-                print(f"  ✓ Results found!")
+                logger.info(f"Results found | url={race_url} | positions={len(race_result.finishing_order)}")
 
                 # Get predictions for this race
                 predictions = self.prediction_repo.get_predictions_for_race(race_url)
 
                 if predictions:
-                    print(f"  Evaluating {len(predictions)} predictions...")
+                    logger.info(f"Evaluating {len(predictions)} predictions...")
 
                     for pred in predictions:
                         await self.evaluate_prediction(pred, race_result)
@@ -225,11 +235,11 @@ class ResultsEvaluationService:
 
             else:
                 # Results not available yet
-                print(f"  ⚠ Results not available yet")
+                logger.warning(f"Results not available | url={race_url}")
                 await self.retry_or_abandon(race_url)
 
         except Exception as e:
-            print(f"  ✗ Error fetching results: {e}")
+            logger.error(f"Error fetching results | url={race_url} | error={e}", exc_info=True)
             await self.retry_or_abandon(race_url)
 
     async def retry_or_abandon(self, race_url: str):
@@ -238,15 +248,15 @@ class ResultsEvaluationService:
         check_info["retry_count"] += 1
 
         if check_info["retry_count"] >= self.settings.timing.result_max_retries:
-            print(f"  ✗ Max retries reached, abandoning")
+            logger.warning(f"Max retries reached, abandoning | url={race_url} | retries={check_info['retry_count']}")
             del self.scheduled_checks[race_url]
         else:
             # Schedule next retry
-            next_check = datetime.now() + timedelta(
+            next_check = datetime.utcnow() + timedelta(
                 seconds=self.settings.timing.result_retry_interval
             )
             check_info["check_time"] = next_check
-            print(f"  ⏰ Next check at: {next_check.strftime('%H:%M:%S')}")
+            logger.info(f"Scheduled retry | url={race_url} | next_check={next_check.strftime('%H:%M:%S')} | retry={check_info['retry_count']}")
 
     def _build_actual_dividends(self, race_result, finishing_order: list) -> dict:
         """Build structured actual dividends with combinations."""
@@ -313,12 +323,12 @@ class ResultsEvaluationService:
         agent_name = prediction["agent_name"]
         structured_bet = prediction["structured_bet"]
 
-        print(f"    Evaluating {agent_name} prediction #{prediction_id}...")
+        logger.info(f"Evaluating prediction | agent={agent_name} | prediction_id={prediction_id}")
 
         # Parse finishing order
         finishing_order = race_result.finishing_order
         if not finishing_order:
-            print(f"    ✗ No finishing order available")
+            logger.warning(f"No finishing order available | prediction_id={prediction_id}")
             return
 
         # Extract positions
@@ -439,12 +449,11 @@ class ResultsEvaluationService:
             actual_dividends_json=json.dumps(actual_dividends)
         )
 
-        # Print summary
+        # Calculate summary
         total_payout = sum(payouts.values())
         profit_loss = total_payout - total_bet_amount
-        print(f"    ✓ {agent_name}: Bet ${total_bet_amount:.2f}, "
-              f"Won ${total_payout:.2f}, "
-              f"P/L: ${profit_loss:+.2f}")
+
+        logger.info(f"Evaluation complete | agent={agent_name} | prediction_id={prediction_id} | bet=${total_bet_amount:.2f} | won=${total_payout:.2f} | pl=${profit_loss:+.2f}")
 
     async def publish_evaluation_complete(self, race_url: str, predictions: list[dict]):
         """Publish evaluation completion to Telegram service."""
@@ -462,6 +471,8 @@ class ResultsEvaluationService:
             json.dumps(message)
         )
 
+        logger.info(f"Published evaluation results to Telegram | url={race_url} | predictions={len(predictions)}")
+
     async def shutdown(self):
         """Shutdown the service."""
         if self.pubsub:
@@ -470,7 +481,7 @@ class ResultsEvaluationService:
         if self.redis_client:
             await self.redis_client.close()
         await self.parser.__aexit__(None, None, None)
-        print("\n✓ Results service stopped")
+        logger.info("Results service stopped")
 
 
 async def main():
@@ -479,7 +490,7 @@ async def main():
     try:
         await service.start()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        logger.info("Shutting down...")
         await service.shutdown()
 
 
