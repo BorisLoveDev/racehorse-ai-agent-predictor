@@ -41,7 +41,7 @@ class RaceMonitorService:
 
         print(f"✓ Race Monitor Service started")
         print(f"  Checking races every {self.settings.timing.monitor_poll_interval}s")
-        print(f"  Triggering analysis {self.settings.timing.minutes_before_race} min before race")
+        print(f"  Triggering analysis: 5 min before to 1 min after race start")
 
         # Start monitoring loop
         await self.monitor_loop()
@@ -93,10 +93,10 @@ class RaceMonitorService:
         now = datetime.now(race.time_parsed.tzinfo)
         time_until_race = (race.time_parsed - now).total_seconds() / 60  # minutes
 
-        # Trigger window: between N minutes and N+2 minutes before race
-        trigger_time = self.settings.timing.minutes_before_race
-        trigger_window_start = trigger_time + 2
-        trigger_window_end = trigger_time
+        # Trigger window: from 5 minutes before to 1 minute after race start
+        # This allows catching races even if slightly delayed or already started
+        trigger_window_start = 5  # 5 minutes before race
+        trigger_window_end = -1   # up to 1 minute after race start is OK
 
         if trigger_window_end <= time_until_race <= trigger_window_start:
             print(f"\n  → Triggering analysis for: {race.location} R{race.race_number}")
@@ -132,9 +132,9 @@ class RaceMonitorService:
                 print(f"     ✗ Error: {e}")
 
         elif time_until_race < trigger_window_end:
-            # Race is too soon or already started
+            # Race started more than 1 minute ago - too late
             if race_url not in self.monitored_races:
-                print(f"  ⚠ Race too soon: {race.location} R{race.race_number} ({time_until_race:.1f} min)")
+                print(f"  ⚠ Race already started: {race.location} R{race.race_number} ({time_until_race:.1f} min)")
                 self.monitored_races.add(race_url)  # Mark to avoid spam
 
     def _format_race_data(self, race_details) -> dict:
