@@ -79,39 +79,55 @@ class ResultsEvaluationService:
             cursor = conn.cursor()
 
             # Find all races with predictions but no outcomes
+            # Include races even with empty race_start_time
             cursor.execute('''
-                SELECT DISTINCT p.race_url, p.race_start_time
+                SELECT DISTINCT p.race_url, p.race_start_time, p.created_at
                 FROM predictions p
                 WHERE p.prediction_id NOT IN (
                     SELECT prediction_id FROM prediction_outcomes
                 )
-                AND p.race_start_time IS NOT NULL
             ''')
 
             count = 0
             for row in cursor.fetchall():
-                race_url, race_start_str = row
-
-                if not race_start_str:
-                    continue
+                race_url, race_start_str, created_at_str = row
 
                 try:
-                    # Parse race start time
-                    race_start = datetime.fromisoformat(race_start_str.replace('Z', '+00:00'))
+                    # If race_start_time is available, use it
+                    if race_start_str and race_start_str.strip():
+                        race_start = datetime.fromisoformat(race_start_str.replace('Z', '+00:00'))
+                        check_time = race_start + timedelta(
+                            minutes=self.settings.timing.result_wait_minutes
+                        )
 
-                    # Calculate check time (start + wait minutes)
-                    check_time = race_start + timedelta(
-                        minutes=self.settings.timing.result_wait_minutes
-                    )
+                        # Only schedule if check time hasn't passed by more than 24 hours
+                        now = datetime.now(tz=check_time.tzinfo)
+                        if now - check_time < timedelta(hours=24):
+                            self.scheduled_checks[race_url] = {
+                                "check_time": check_time,
+                                "retry_count": 0
+                            }
+                            count += 1
+                    else:
+                        # race_start_time is empty - use created_at as fallback
+                        # If prediction was created more than 15 minutes ago, check now
+                        if created_at_str:
+                            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                            now = datetime.utcnow()
+                            if created_at.tzinfo:
+                                now = datetime.now(tz=created_at.tzinfo)
 
-                    # Only schedule if check time hasn't passed by more than 24 hours
-                    now = datetime.now(tz=check_time.tzinfo)
-                    if now - check_time < timedelta(hours=24):
-                        self.scheduled_checks[race_url] = {
-                            "check_time": check_time,
-                            "retry_count": 0
-                        }
-                        count += 1
+                            age_minutes = (now - created_at).total_seconds() / 60
+
+                            # If old enough (race likely finished), schedule immediate check
+                            if age_minutes >= self.settings.timing.result_wait_minutes:
+                                self.scheduled_checks[race_url] = {
+                                    "check_time": datetime.now(),
+                                    "retry_count": 0
+                                }
+                                count += 1
+                                print(f"  ⚠ Scheduling check for {race_url} (empty race_start_time, created {age_minutes:.0f}m ago)")
+
                 except Exception as e:
                     print(f"  ⚠ Error parsing time for {race_url}: {e}")
                     continue

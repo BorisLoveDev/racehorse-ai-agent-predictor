@@ -207,11 +207,20 @@ class AgentOrchestratorService:
         # Extract odds snapshot
         odds_snapshot = self._build_odds_snapshot(race_data, structured_bet)
 
+        # Get race start time with fallback
+        # If start_time_iso is None (parser couldn't extract it), use current time as fallback
+        # This ensures race_start_time is never empty in the database
+        race_start_time = race_info.get("start_time_iso")
+        if not race_start_time:
+            # Use current UTC time as fallback - race is imminent anyway
+            race_start_time = datetime.utcnow().isoformat() + "Z"
+            print(f"    ⚠ Using fallback race_start_time: {race_start_time}")
+
         prediction_id = self.prediction_repo.save_prediction(
             agent_name=agent_name,
             race_id=race_id,
             structured_bet=structured_bet,
-            race_start_time=race_info.get("start_time_iso"),
+            race_start_time=race_start_time,
             odds_snapshot_json=json.dumps(odds_snapshot)
         )
 

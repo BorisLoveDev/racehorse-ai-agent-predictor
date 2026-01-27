@@ -86,6 +86,7 @@ class TelegramNotificationService:
                 "/status - Show active bets awaiting results",
                 "/history [N] - Show last N results (default 5)",
                 "/stats [period] - Statistics (all|today|3d|week)",
+                "/evaluate - Manually check results for pending bets",
                 "",
                 "Predictions are sent automatically before each race."
             ]
@@ -103,6 +104,7 @@ class TelegramNotificationService:
                 "/status - Show active bets awaiting results",
                 "/history [N] - Show last N results",
                 "/stats [period] - Statistics with P/L chart",
+                "/evaluate - Manually check pending bets",
                 "",
                 "<b>Stats periods:</b>",
                 "• all - All time (default)",
@@ -235,6 +237,238 @@ class TelegramNotificationService:
 
             except Exception as e:
                 await message.answer(f"Error fetching statistics: {e}")
+
+        @self.router.message(Command("evaluate"))
+        async def cmd_evaluate(message: Message):
+            """Manually evaluate pending predictions."""
+            await message.answer("🔄 Starting evaluation of pending predictions...")
+
+            try:
+                pending = self.stats_repo.get_pending_predictions()
+
+                if not pending:
+                    await message.answer("<b>✓ No pending predictions to evaluate</b>")
+                    return
+
+                # Group by race_url
+                races = {}
+                for pred in pending:
+                    url = pred["race_url"]
+                    if url not in races:
+                        races[url] = []
+                    races[url].append(pred)
+
+                await message.answer(f"Found {len(pending)} predictions across {len(races)} races")
+
+                # Initialize parser if needed
+                if not self.parser:
+                    self.parser = TabTouchParser(headless=True)
+                    await self.parser.__aenter__()
+
+                evaluated = 0
+                skipped = 0
+
+                for race_url, predictions in races.items():
+                    try:
+                        race_result = await self.parser.get_race_results(race_url)
+
+                        if not race_result or not race_result.finishing_order:
+                            skipped += len(predictions)
+                            continue
+
+                        for pred in predictions:
+                            eval_result = await self._evaluate_prediction_for_cmd(pred, race_result)
+                            if eval_result:
+                                evaluated += 1
+                            else:
+                                skipped += 1
+
+                    except Exception as e:
+                        print(f"Error evaluating {race_url}: {e}")
+                        skipped += len(predictions)
+
+                lines = [
+                    "<b>✓ Evaluation complete</b>",
+                    "",
+                    f"Evaluated: {evaluated}",
+                    f"Skipped (no results): {skipped}"
+                ]
+                await message.answer("\n".join(lines))
+
+            except Exception as e:
+                await message.answer(f"Error during evaluation: {e}")
+
+    async def _evaluate_prediction_for_cmd(self, prediction: dict, race_result) -> bool:
+        """Evaluate a prediction and save outcome. Returns True if evaluated."""
+        import json
+
+        structured_bet = prediction["structured_bet"]
+        finishing_order = race_result.finishing_order
+
+        if not finishing_order:
+            return False
+
+        winner = finishing_order[0] if len(finishing_order) > 0 else None
+        second = finishing_order[1] if len(finishing_order) > 1 else None
+        third = finishing_order[2] if len(finishing_order) > 2 else None
+
+        bet_results = {}
+        payouts = {}
+
+        # Win bet
+        if structured_bet.get("win_bet"):
+            win_bet = structured_bet["win_bet"]
+            horse_num = win_bet["horse_number"]
+            is_win = winner and winner.get("number") == horse_num
+            bet_results["win"] = is_win
+            if is_win and winner:
+                odds = winner.get("fixed_win", 0) or winner.get("tote_win", 0)
+                payouts["win"] = win_bet["amount"] * odds
+
+        # Place bet
+        if structured_bet.get("place_bet"):
+            place_bet = structured_bet["place_bet"]
+            horse_num = place_bet["horse_number"]
+            placed_horses = [h.get("number") for h in finishing_order[:3] if h]
+            is_place = horse_num in placed_horses
+            bet_results["place"] = is_place
+            if is_place:
+                for horse in finishing_order[:3]:
+                    if horse.get("number") == horse_num:
+                        odds = horse.get("fixed_place", 0) or horse.get("tote_place", 0)
+                        payouts["place"] = place_bet["amount"] * odds
+                        break
+
+        # Exacta bet
+        if structured_bet.get("exacta_bet"):
+            exacta_bet = structured_bet["exacta_bet"]
+            is_exacta = (
+                winner and second and
+                winner.get("number") == exacta_bet["first"] and
+                second.get("number") == exacta_bet["second"]
+            )
+            bet_results["exacta"] = is_exacta
+            if is_exacta and race_result.dividends.get("exacta"):
+                div = race_result.dividends["exacta"]
+                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
+                if isinstance(div_val, str):
+                    div_val = float(div_val.replace("$", "").replace(",", ""))
+                payouts["exacta"] = exacta_bet["amount"] * div_val
+
+        # Quinella bet
+        if structured_bet.get("quinella_bet"):
+            quinella_bet = structured_bet["quinella_bet"]
+            horses = set(quinella_bet["horses"])
+            top_two = {winner.get("number"), second.get("number")} if winner and second else set()
+            is_quinella = horses == top_two
+            bet_results["quinella"] = is_quinella
+            if is_quinella and race_result.dividends.get("quinella"):
+                div = race_result.dividends["quinella"]
+                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
+                if isinstance(div_val, str):
+                    div_val = float(div_val.replace("$", "").replace(",", ""))
+                payouts["quinella"] = quinella_bet["amount"] * div_val
+
+        # Trifecta bet
+        if structured_bet.get("trifecta_bet"):
+            trifecta_bet = structured_bet["trifecta_bet"]
+            is_trifecta = (
+                winner and second and third and
+                winner.get("number") == trifecta_bet["first"] and
+                second.get("number") == trifecta_bet["second"] and
+                third.get("number") == trifecta_bet["third"]
+            )
+            bet_results["trifecta"] = is_trifecta
+            if is_trifecta and race_result.dividends.get("trifecta"):
+                div = race_result.dividends["trifecta"]
+                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
+                if isinstance(div_val, str):
+                    div_val = float(div_val.replace("$", "").replace(",", ""))
+                payouts["trifecta"] = trifecta_bet["amount"] * div_val
+
+        # First4 bet
+        if structured_bet.get("first4_bet"):
+            first4_bet = structured_bet["first4_bet"]
+            fourth = finishing_order[3] if len(finishing_order) > 3 else None
+            actual_order = [h.get("number") for h in finishing_order[:4] if h]
+            is_first4 = first4_bet["horses"] == actual_order
+            bet_results["first4"] = is_first4
+            if is_first4 and race_result.dividends.get("first4"):
+                div = race_result.dividends["first4"]
+                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
+                if isinstance(div_val, str):
+                    div_val = float(div_val.replace("$", "").replace(",", ""))
+                payouts["first4"] = first4_bet["amount"] * div_val
+
+        # QPS bet
+        if structured_bet.get("qps_bet"):
+            qps_bet = structured_bet["qps_bet"]
+            horses = set(qps_bet["horses"])
+            top_three = {h.get("number") for h in finishing_order[:3] if h}
+            is_qps = len(horses & top_three) >= 2
+            bet_results["qps"] = is_qps
+            if is_qps and race_result.dividends.get("qps"):
+                div = race_result.dividends["qps"]
+                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
+                if isinstance(div_val, str):
+                    div_val = float(div_val.replace("$", "").replace(",", ""))
+                payouts["qps"] = qps_bet["amount"] * div_val
+
+        # Calculate total bet amount
+        total_bet_amount = sum(
+            bet.get("amount", 0)
+            for bet_type in ["win_bet", "place_bet", "exacta_bet", "quinella_bet",
+                             "trifecta_bet", "first4_bet", "qps_bet"]
+            if (bet := structured_bet.get(bet_type))
+        )
+
+        # Build actual dividends
+        actual_dividends = self._build_actual_dividends_for_cmd(race_result, finishing_order)
+
+        # Save outcome
+        self.outcome_repo.save_outcome(
+            prediction_id=prediction["prediction_id"],
+            finishing_order=finishing_order,
+            dividends=race_result.dividends,
+            bet_results=bet_results,
+            payouts=payouts,
+            total_bet_amount=total_bet_amount,
+            actual_dividends_json=json.dumps(actual_dividends)
+        )
+
+        return True
+
+    def _build_actual_dividends_for_cmd(self, race_result, finishing_order: list) -> dict:
+        """Build structured actual dividends."""
+        actual = {}
+        dividends = race_result.dividends
+
+        if finishing_order and dividends.get("win"):
+            winner = finishing_order[0]["number"]
+            actual["win"] = {str(winner): dividends["win"]}
+
+        if dividends.get("exacta") and len(finishing_order) >= 2:
+            combo = f"{finishing_order[0]['number']}-{finishing_order[1]['number']}"
+            div = dividends["exacta"]
+            actual["exacta"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        if dividends.get("quinella") and len(finishing_order) >= 2:
+            horses = sorted([finishing_order[0]["number"], finishing_order[1]["number"]])
+            combo = f"{horses[0]}-{horses[1]}"
+            div = dividends["quinella"]
+            actual["quinella"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        if dividends.get("trifecta") and len(finishing_order) >= 3:
+            combo = f"{finishing_order[0]['number']}-{finishing_order[1]['number']}-{finishing_order[2]['number']}"
+            div = dividends["trifecta"]
+            actual["trifecta"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        if dividends.get("first4") and len(finishing_order) >= 4:
+            combo = "-".join(str(h["number"]) for h in finishing_order[:4])
+            div = dividends["first4"]
+            actual["first4"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        return actual
 
     async def start(self):
         """Start the Telegram service."""

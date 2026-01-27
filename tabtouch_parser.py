@@ -780,6 +780,61 @@ class TabTouchParser:
                 print(f"Error parsing position {pos}: {e}")
                 continue
 
+        # If horse numbers are 0, try to extract from dividends
+        if order and all(h.get("number") == 0 for h in order):
+            order = await self._fix_finishing_order_from_dividends(order)
+
+        return order
+
+    async def _fix_finishing_order_from_dividends(self, order: list[dict]) -> list[dict]:
+        """Extract horse numbers from dividend combinations when direct parsing fails."""
+        try:
+            # Parse dividends to get horse numbers
+            dividends = await self._parse_dividends()
+
+            # Try to extract from first4 (most complete: 1-2-3-4)
+            if dividends.get("first_4") and dividends["first_4"].get("combination"):
+                combo = dividends["first_4"]["combination"]
+                numbers = [int(n) for n in combo.split("-")]
+                if len(numbers) >= len(order):
+                    for i, entry in enumerate(order):
+                        if i < len(numbers):
+                            entry["number"] = numbers[i]
+                    return order
+
+            # Try trifecta (1-2-3)
+            if dividends.get("trifecta") and dividends["trifecta"].get("combination"):
+                combo = dividends["trifecta"]["combination"]
+                numbers = [int(n) for n in combo.split("-")]
+                if len(numbers) >= 3:
+                    for i in range(min(3, len(order))):
+                        order[i]["number"] = numbers[i]
+                    return order
+
+            # Try exacta (1-2)
+            if dividends.get("exacta") and dividends["exacta"].get("combination"):
+                combo = dividends["exacta"]["combination"]
+                numbers = [int(n) for n in combo.split("-")]
+                if len(numbers) >= 2:
+                    for i in range(min(2, len(order))):
+                        order[i]["number"] = numbers[i]
+                    return order
+
+            # Try quinella (any order of 1-2)
+            if dividends.get("quinella") and dividends["quinella"].get("combination"):
+                combo = dividends["quinella"]["combination"]
+                numbers = [int(n) for n in combo.split("-")]
+                # Quinella is unordered, but we can still use it for top 2
+                if len(numbers) >= 2 and len(order) >= 2:
+                    # We need exacta to know the order, quinella alone is ambiguous
+                    # Only use quinella if exacta is not available
+                    order[0]["number"] = numbers[0]
+                    order[1]["number"] = numbers[1]
+                    return order
+
+        except Exception as e:
+            print(f"Error fixing finishing order from dividends: {e}")
+
         return order
 
     async def _parse_dividends(self) -> dict:
