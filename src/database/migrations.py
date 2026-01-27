@@ -7,6 +7,31 @@ import sqlite3
 from pathlib import Path
 
 
+def add_odds_columns(cursor: sqlite3.Cursor) -> None:
+    """Add odds_snapshot_json and actual_dividends_json columns if they don't exist."""
+    # Check if odds_snapshot_json exists in predictions table
+    cursor.execute("PRAGMA table_info(predictions)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "odds_snapshot_json" not in columns:
+        cursor.execute("""
+            ALTER TABLE predictions
+            ADD COLUMN odds_snapshot_json TEXT
+        """)
+        print("  ✓ Added odds_snapshot_json to predictions table")
+
+    # Check if actual_dividends_json exists in prediction_outcomes table
+    cursor.execute("PRAGMA table_info(prediction_outcomes)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "actual_dividends_json" not in columns:
+        cursor.execute("""
+            ALTER TABLE prediction_outcomes
+            ADD COLUMN actual_dividends_json TEXT
+        """)
+        print("  ✓ Added actual_dividends_json to prediction_outcomes table")
+
+
 def run_migrations(db_path: str = "races.db") -> None:
     """Run all database migrations."""
     conn = sqlite3.connect(db_path)
@@ -157,6 +182,9 @@ def run_migrations(db_path: str = "races.db") -> None:
             CREATE INDEX IF NOT EXISTS idx_prediction_outcomes_prediction_id
             ON prediction_outcomes(prediction_id)
         """)
+
+        # Add new columns for odds and dividends (Stage 1)
+        add_odds_columns(cursor)
 
         conn.commit()
         print("✓ Database migrations completed successfully")

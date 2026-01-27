@@ -5,7 +5,7 @@ Provides clean interface for storing and retrieving predictions and outcomes.
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from ..models.bets import StructuredBetOutput
@@ -66,7 +66,8 @@ class PredictionRepository:
         agent_name: str,
         race_id: int,
         structured_bet: StructuredBetOutput,
-        race_start_time: Optional[str] = None
+        race_start_time: Optional[str] = None,
+        odds_snapshot_json: Optional[str] = None
     ) -> int:
         """
         Save a prediction to the database.
@@ -91,8 +92,8 @@ class PredictionRepository:
                 INSERT INTO predictions (
                     race_id, agent_id, race_url, race_location, race_number,
                     race_start_time, analysis_summary, confidence_score,
-                    risk_level, key_factors, structured_bet_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    risk_level, key_factors, structured_bet_json, odds_snapshot_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 race_id,
                 agent_id,
@@ -104,7 +105,8 @@ class PredictionRepository:
                 structured_bet.confidence_score,
                 structured_bet.risk_level,
                 json.dumps(structured_bet.key_factors),
-                structured_bet.model_dump_json()
+                structured_bet.model_dump_json(),
+                odds_snapshot_json
             ))
 
             prediction_id = cursor.lastrowid
@@ -123,7 +125,7 @@ class PredictionRepository:
                 SELECT prediction_id, race_id, agent_id, race_url,
                        race_location, race_number, race_start_time,
                        analysis_summary, confidence_score, risk_level,
-                       key_factors, structured_bet_json, created_at
+                       key_factors, structured_bet_json, odds_snapshot_json, created_at
                 FROM predictions WHERE prediction_id = ?
             """, (prediction_id,))
             result = cursor.fetchone()
@@ -142,7 +144,8 @@ class PredictionRepository:
                     "risk_level": result[9],
                     "key_factors": json.loads(result[10]) if result[10] else [],
                     "structured_bet": json.loads(result[11]),
-                    "created_at": result[12]
+                    "odds_snapshot": json.loads(result[12]) if result[12] else {},
+                    "created_at": result[13]
                 }
             return None
         finally:
@@ -157,7 +160,7 @@ class PredictionRepository:
                 SELECT p.prediction_id, p.race_id, p.agent_id, a.agent_name,
                        p.race_url, p.race_location, p.race_number,
                        p.analysis_summary, p.confidence_score, p.risk_level,
-                       p.structured_bet_json, p.created_at
+                       p.structured_bet_json, p.odds_snapshot_json, p.created_at
                 FROM predictions p
                 JOIN agents a ON p.agent_id = a.agent_id
                 WHERE p.race_url = ?
@@ -179,7 +182,8 @@ class PredictionRepository:
                     "confidence_score": row[8],
                     "risk_level": row[9],
                     "structured_bet": json.loads(row[10]),
-                    "created_at": row[11]
+                    "odds_snapshot": json.loads(row[11]) if row[11] else {},
+                    "created_at": row[12]
                 })
             return predictions
         finally:
@@ -199,7 +203,8 @@ class OutcomeRepository:
         dividends: dict,
         bet_results: dict[str, bool],
         payouts: dict[str, float],
-        total_bet_amount: float
+        total_bet_amount: float,
+        actual_dividends_json: Optional[str] = None
     ) -> int:
         """
         Save prediction outcome after race finishes.
@@ -219,8 +224,8 @@ class OutcomeRepository:
                     quinella_result, trifecta_result, first4_result, qps_result,
                     win_payout, place_payout, exacta_payout, quinella_payout,
                     trifecta_payout, first4_payout, qps_payout,
-                    total_bet_amount, total_payout, net_profit_loss
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    total_bet_amount, total_payout, net_profit_loss, actual_dividends_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 prediction_id,
                 datetime.utcnow().isoformat(),
@@ -242,7 +247,8 @@ class OutcomeRepository:
                 payouts.get("qps", 0.0),
                 total_bet_amount,
                 total_payout,
-                net_profit_loss
+                net_profit_loss,
+                actual_dividends_json
             ))
 
             outcome_id = cursor.lastrowid
@@ -348,7 +354,7 @@ class OutcomeRepository:
                        win_payout, place_payout, exacta_payout,
                        quinella_payout, trifecta_payout, first4_payout,
                        qps_payout, total_bet_amount, total_payout,
-                       net_profit_loss, evaluated_at
+                       net_profit_loss, evaluated_at, actual_dividends_json
                 FROM prediction_outcomes
                 WHERE prediction_id = ?
             """, (prediction_id,))
@@ -382,7 +388,8 @@ class OutcomeRepository:
                     "total_bet_amount": result[19],
                     "total_payout": result[20],
                     "net_profit_loss": result[21],
-                    "evaluated_at": result[22]
+                    "evaluated_at": result[22],
+                    "actual_dividends": json.loads(result[23]) if result[23] else {}
                 }
             return None
         finally:
@@ -459,5 +466,169 @@ class StatisticsRepository:
                     "last_updated": row[25]
                 })
             return statistics
+        finally:
+            conn.close()
+
+    def _get_date_filter(self, period: str) -> tuple[str, list]:
+        """Return SQL WHERE clause and params for period."""
+        now = datetime.utcnow()
+        if period == "today":
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "3d":
+            start = now - timedelta(days=3)
+        elif period == "week":
+            start = now - timedelta(days=7)
+        else:  # "all"
+            return "", []
+
+        return "AND po.evaluated_at >= ?", [start.isoformat()]
+
+    def get_statistics_for_period(self, period: str = "all") -> list[dict]:
+        """Get agent statistics for specified period."""
+        where_clause, params = self._get_date_filter(period)
+
+        query = f"""
+            SELECT
+                a.agent_name,
+                COUNT(DISTINCT p.prediction_id) as total_predictions,
+                COUNT(po.outcome_id) as total_bets,
+                SUM(CASE WHEN po.net_profit_loss > 0 THEN 1 ELSE 0 END) as total_wins,
+                SUM(CASE WHEN po.net_profit_loss <= 0 THEN 1 ELSE 0 END) as total_losses,
+                SUM(po.total_bet_amount) as total_bet_amount,
+                SUM(po.total_payout) as total_payout,
+                SUM(po.net_profit_loss) as net_profit_loss
+            FROM agents a
+            LEFT JOIN predictions p ON a.agent_id = p.agent_id
+            LEFT JOIN prediction_outcomes po ON p.prediction_id = po.prediction_id
+            WHERE 1=1 {where_clause}
+            GROUP BY a.agent_id
+        """
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+
+            statistics = []
+            for row in results:
+                statistics.append({
+                    "agent_name": row[0],
+                    "total_predictions": row[1] or 0,
+                    "total_bets": row[2] or 0,
+                    "total_wins": row[3] or 0,
+                    "total_losses": row[4] or 0,
+                    "total_bet_amount": row[5] or 0.0,
+                    "total_payout": row[6] or 0.0,
+                    "net_profit_loss": row[7] or 0.0
+                })
+            return statistics
+        finally:
+            conn.close()
+
+    def get_pl_chart_data(self, period: str = "all") -> list[dict]:
+        """Get P/L data points for chart generation."""
+        where_clause, params = self._get_date_filter(period)
+
+        query = f"""
+            SELECT
+                a.agent_name,
+                p.race_start_time,
+                po.net_profit_loss,
+                SUM(po.net_profit_loss) OVER (
+                    PARTITION BY a.agent_id
+                    ORDER BY p.race_start_time
+                ) as cumulative_pl
+            FROM agents a
+            JOIN predictions p ON a.agent_id = p.agent_id
+            JOIN prediction_outcomes po ON p.prediction_id = po.prediction_id
+            WHERE po.evaluated_at IS NOT NULL {where_clause}
+            ORDER BY p.race_start_time
+        """
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+
+            chart_data = []
+            for row in results:
+                chart_data.append({
+                    "agent": row[0],
+                    "race_time": datetime.fromisoformat(row[1]) if row[1] else datetime.utcnow(),
+                    "net_profit_loss": row[2],
+                    "cumulative_pl": row[3]
+                })
+            return chart_data
+        finally:
+            conn.close()
+
+    def get_pending_predictions(self) -> list[dict]:
+        """Get predictions without outcomes (active bets)."""
+        query = """
+            SELECT p.*, a.agent_name
+            FROM predictions p
+            JOIN agents a ON p.agent_id = a.agent_id
+            LEFT JOIN prediction_outcomes po ON p.prediction_id = po.prediction_id
+            WHERE po.outcome_id IS NULL
+            ORDER BY p.race_start_time
+        """
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query)
+            results = cursor.fetchall()
+
+            predictions = []
+            for row in results:
+                predictions.append({
+                    "prediction_id": row[0],
+                    "race_id": row[1],
+                    "agent_id": row[2],
+                    "race_url": row[3],
+                    "race_location": row[4],
+                    "race_number": row[5],
+                    "race_start_time": row[6],
+                    "agent_name": row[-1],
+                    "structured_bet": json.loads(row[10])
+                })
+            return predictions
+        finally:
+            conn.close()
+
+    def get_recent_outcomes(self, limit: int = 5) -> list[dict]:
+        """Get most recent outcomes with prediction details."""
+        query = """
+            SELECT po.*, p.race_location, p.race_number, a.agent_name, p.structured_bet_json
+            FROM prediction_outcomes po
+            JOIN predictions p ON po.prediction_id = p.prediction_id
+            JOIN agents a ON p.agent_id = a.agent_id
+            ORDER BY po.evaluated_at DESC
+            LIMIT ?
+        """
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(query, (limit,))
+            results = cursor.fetchall()
+
+            outcomes = []
+            for row in results:
+                outcomes.append({
+                    "outcome_id": row[0],
+                    "prediction_id": row[1],
+                    "race_location": row[-4],
+                    "race_number": row[-3],
+                    "agent_name": row[-2],
+                    "total_bet_amount": row[19],
+                    "total_payout": row[20],
+                    "net_profit_loss": row[21],
+                    "evaluated_at": row[22],
+                    "structured_bet": json.loads(row[-1])
+                })
+            return outcomes
         finally:
             conn.close()

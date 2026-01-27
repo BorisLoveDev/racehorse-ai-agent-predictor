@@ -146,6 +146,51 @@ class AgentOrchestratorService:
             print(f"    ✗ {agent.agent_name.capitalize()} error: {e}")
             return e
 
+    def _build_odds_snapshot(self, race_data: dict, structured_bet) -> dict:
+        """Extract odds for horses in the bet from race_data."""
+        runners = {str(r["number"]): r for r in race_data.get("runners", [])}
+        snapshot = {"win": {}, "place": {}}
+
+        # Win bet odds
+        if structured_bet.win_bet:
+            num = str(structured_bet.win_bet.horse_number)
+            if num in runners:
+                snapshot["win"][num] = runners[num].get("fixed_win", 0)
+
+        # Place bet odds
+        if structured_bet.place_bet:
+            num = str(structured_bet.place_bet.horse_number)
+            if num in runners:
+                snapshot["place"][num] = runners[num].get("fixed_place", 0)
+
+        # Exacta - use win odds as approximation
+        if structured_bet.exacta_bet:
+            key = f"{structured_bet.exacta_bet.first}-{structured_bet.exacta_bet.second}"
+            snapshot["exacta"] = {key: None}
+
+        # Quinella
+        if structured_bet.quinella_bet:
+            horses = sorted([structured_bet.quinella_bet.first, structured_bet.quinella_bet.second])
+            key = f"{horses[0]}-{horses[1]}"
+            snapshot["quinella"] = {key: None}
+
+        # Trifecta
+        if structured_bet.trifecta_bet:
+            key = f"{structured_bet.trifecta_bet.first}-{structured_bet.trifecta_bet.second}-{structured_bet.trifecta_bet.third}"
+            snapshot["trifecta"] = {key: None}
+
+        # First 4
+        if structured_bet.first4_bet:
+            key = f"{structured_bet.first4_bet.first}-{structured_bet.first4_bet.second}-{structured_bet.first4_bet.third}-{structured_bet.first4_bet.fourth}"
+            snapshot["first4"] = {key: None}
+
+        # QPS
+        if structured_bet.qps_bet:
+            key = f"{structured_bet.qps_bet.first}-{structured_bet.qps_bet.second}-{structured_bet.qps_bet.third}-{structured_bet.qps_bet.fourth}"
+            snapshot["qps"] = {key: None}
+
+        return snapshot
+
     async def save_prediction(
         self,
         agent_name: str,
@@ -159,11 +204,15 @@ class AgentOrchestratorService:
         # In production, you'd look up or create the race_id from races table
         race_id = 0
 
+        # Extract odds snapshot
+        odds_snapshot = self._build_odds_snapshot(race_data, structured_bet)
+
         prediction_id = self.prediction_repo.save_prediction(
             agent_name=agent_name,
             race_id=race_id,
             structured_bet=structured_bet,
-            race_start_time=race_info.get("start_time_iso")
+            race_start_time=race_info.get("start_time_iso"),
+            odds_snapshot_json=json.dumps(odds_snapshot)
         )
 
         return prediction_id

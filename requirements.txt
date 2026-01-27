@@ -22,3 +22,6 @@ redis>=5.0.0
 
 # Async utilities
 asyncio-redis>=0.16.0
+
+# Charts and plotting
+matplotlib>=3.8.0

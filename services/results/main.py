@@ -229,6 +229,65 @@ class ResultsEvaluationService:
             check_info["check_time"] = next_check
             print(f"  ⏰ Next check at: {next_check.strftime('%H:%M:%S')}")
 
+    def _build_actual_dividends(self, race_result, finishing_order: list) -> dict:
+        """Build structured actual dividends with combinations."""
+        actual = {}
+        dividends = race_result.dividends
+
+        # Win dividend (first place horse)
+        if finishing_order and dividends.get("win"):
+            winner = finishing_order[0]["number"]
+            actual["win"] = {str(winner): dividends["win"]}
+
+        # Place dividends (top 3)
+        if dividends.get("place") and len(finishing_order) >= 1:
+            actual["place"] = {}
+            place_div = dividends.get("place")
+            if isinstance(place_div, list):
+                for i, horse in enumerate(finishing_order[:min(3, len(place_div))]):
+                    actual["place"][str(horse["number"])] = place_div[i]
+            elif isinstance(place_div, dict):
+                for horse in finishing_order[:3]:
+                    num = str(horse["number"])
+                    if num in place_div:
+                        actual["place"][num] = place_div[num]
+            else:
+                # Single place dividend
+                if finishing_order:
+                    actual["place"][str(finishing_order[0]["number"])] = place_div
+
+        # Exacta
+        if dividends.get("exacta") and len(finishing_order) >= 2:
+            combo = f"{finishing_order[0]['number']}-{finishing_order[1]['number']}"
+            div = dividends["exacta"]
+            actual["exacta"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        # Quinella
+        if dividends.get("quinella") and len(finishing_order) >= 2:
+            horses = sorted([finishing_order[0]["number"], finishing_order[1]["number"]])
+            combo = f"{horses[0]}-{horses[1]}"
+            div = dividends["quinella"]
+            actual["quinella"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        # Trifecta
+        if dividends.get("trifecta") and len(finishing_order) >= 3:
+            combo = f"{finishing_order[0]['number']}-{finishing_order[1]['number']}-{finishing_order[2]['number']}"
+            div = dividends["trifecta"]
+            actual["trifecta"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        # First4
+        if dividends.get("first4") and len(finishing_order) >= 4:
+            combo = "-".join(str(h["number"]) for h in finishing_order[:4])
+            div = dividends["first4"]
+            actual["first4"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        # QPS
+        if dividends.get("qps"):
+            div = dividends["qps"]
+            actual["qps"] = {"qps": div if not isinstance(div, dict) else div.get("amount", 0)}
+
+        return actual
+
     async def evaluate_prediction(self, prediction: dict, race_result):
         """Evaluate a single prediction against results."""
         prediction_id = prediction["prediction_id"]
@@ -347,6 +406,9 @@ class ResultsEvaluationService:
             if (bet := structured_bet.get(bet_type))
         )
 
+        # Build actual dividends structure
+        actual_dividends = self._build_actual_dividends(race_result, finishing_order)
+
         # Save outcome
         outcome_id = self.outcome_repo.save_outcome(
             prediction_id=prediction_id,
@@ -354,7 +416,8 @@ class ResultsEvaluationService:
             dividends=race_result.dividends,
             bet_results=bet_results,
             payouts=payouts,
-            total_bet_amount=total_bet_amount
+            total_bet_amount=total_bet_amount,
+            actual_dividends_json=json.dumps(actual_dividends)
         )
 
         # Print summary
