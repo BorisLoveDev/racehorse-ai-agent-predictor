@@ -41,7 +41,7 @@ class RaceMonitorService:
 
         print(f"✓ Race Monitor Service started")
         print(f"  Checking races every {self.settings.timing.monitor_poll_interval}s")
-        print(f"  Triggering analysis: 5 min before to 1 min after race start")
+        print(f"  Triggering analysis: {self.settings.timing.minutes_before_race + 2} min before to 1 min after race start")
 
         # Start monitoring loop
         await self.monitor_loop()
@@ -93,9 +93,9 @@ class RaceMonitorService:
         now = datetime.now(race.time_parsed.tzinfo)
         time_until_race = (race.time_parsed - now).total_seconds() / 60  # minutes
 
-        # Trigger window: from 5 minutes before to 1 minute after race start
+        # Trigger window: from configured minutes before to 1 minute after race start
         # This allows catching races even if slightly delayed or already started
-        trigger_window_start = 5  # 5 minutes before race
+        trigger_window_start = self.settings.timing.minutes_before_race + 2  # add buffer
         trigger_window_end = -1   # up to 1 minute after race start is OK
 
         if trigger_window_end <= time_until_race <= trigger_window_start:
