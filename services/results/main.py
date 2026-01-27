@@ -149,18 +149,21 @@ class ResultsEvaluationService:
         """Periodically check for races that need results evaluation."""
         while True:
             try:
-                now = datetime.now(tz=None)
+                now_utc = datetime.utcnow()
                 races_to_check = []
 
                 # Find races ready for checking
                 for race_url, check_info in list(self.scheduled_checks.items()):
                     check_time = check_info["check_time"]
 
-                    # Make check_time naive if it has timezone
+                    # Convert check_time to UTC for comparison
                     if check_time.tzinfo:
-                        check_time = check_time.replace(tzinfo=None)
+                        # Convert timezone-aware to UTC naive for comparison
+                        check_time_utc = (check_time - check_time.utcoffset()).replace(tzinfo=None)
+                    else:
+                        check_time_utc = check_time
 
-                    if now >= check_time:
+                    if now_utc >= check_time_utc:
                         races_to_check.append(race_url)
 
                 # Process each race

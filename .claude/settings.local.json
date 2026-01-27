@@ -35,7 +35,8 @@
       "Bash(redis-cli ping:*)",
       "Bash(docker compose:*)",
       "Bash(docker build:*)",
-      "Bash(column:*)"
+      "Bash(column:*)",
+      "Bash(docker exec:*)"
     ]
   }
 }

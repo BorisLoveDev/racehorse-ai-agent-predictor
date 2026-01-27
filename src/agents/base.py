@@ -188,6 +188,7 @@ Analysis:
 {analysis}
 
 Now provide your structured bet recommendations following the exact schema.
+Remember: Set bet types to null if you don't want to make that bet. Never use amount=0.
 """)
         ])
 
@@ -195,6 +196,10 @@ Now provide your structured bet recommendations following the exact schema.
         structured_llm = self.llm.with_structured_output(StructuredBetOutput)
         messages = structured_prompt.format_messages()
         structured_bet = structured_llm.invoke(messages)
+
+        # Handle None response
+        if structured_bet is None:
+            raise ValueError(f"LLM returned None for structured output")
 
         # Set agent name
         structured_bet.agent_name = self.agent_name
@@ -250,6 +255,11 @@ Provide a detailed analysis that will inform betting decisions. Be specific abou
         """Get the system prompt for structured output generation."""
         return """Based on your analysis, provide structured betting recommendations.
 
+CRITICAL RULES:
+- If you do NOT want to make a particular bet type, set it to null. DO NOT set amount to 0.
+- Every bet you include MUST have amount > 0 (minimum $1).
+- Only include bets you actually recommend. Omit others by setting them to null.
+
 Guidelines:
 - Only recommend bets you have confidence in (confidence_score >= 0.5)
 - Win bets: Horse most likely to win
@@ -260,10 +270,10 @@ Guidelines:
 - First4: Specific 1-2-3-4 finish order
 - QPS: 2-4 horses where any 2 finish in top 3
 
-Bet amounts should reflect confidence:
-- High confidence (0.8+): Higher amounts
-- Medium confidence (0.6-0.8): Moderate amounts
-- Lower confidence (0.5-0.6): Smaller amounts
+Bet amounts should reflect confidence (minimum $1 for any bet):
+- High confidence (0.8+): $5-10
+- Medium confidence (0.6-0.8): $2-5
+- Lower confidence (0.5-0.6): $1-2
 
 Set risk_level based on:
 - Low: Clear favorites, proven form

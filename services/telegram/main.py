@@ -27,7 +27,7 @@ from src.database.repositories import (
     OutcomeRepository,
     StatisticsRepository
 )
-from .charts import generate_pl_chart
+from services.telegram.charts import generate_pl_chart
 
 
 class TelegramNotificationService:
@@ -71,6 +71,46 @@ class TelegramNotificationService:
 
     def _setup_commands(self):
         """Setup command handlers."""
+
+        @self.router.message(Command("start"))
+        async def cmd_start(message: Message):
+            """Handle /start command."""
+            print(f"[DEBUG] Received /start from chat {message.chat.id}")
+            lines = [
+                "<b>🏇 Racehorse Betting Agent</b>",
+                "",
+                "I analyze horse races and provide betting predictions.",
+                "",
+                "<b>Available commands:</b>",
+                "/races - Show upcoming races",
+                "/status - Show active bets awaiting results",
+                "/history [N] - Show last N results (default 5)",
+                "/stats [period] - Statistics (all|today|3d|week)",
+                "",
+                "Predictions are sent automatically before each race."
+            ]
+            await message.answer("\n".join(lines))
+
+        @self.router.message(Command("help"))
+        async def cmd_help(message: Message):
+            """Handle /help command."""
+            lines = [
+                "<b>📖 Help</b>",
+                "",
+                "<b>Commands:</b>",
+                "/start - Welcome message",
+                "/races - Show upcoming races",
+                "/status - Show active bets awaiting results",
+                "/history [N] - Show last N results",
+                "/stats [period] - Statistics with P/L chart",
+                "",
+                "<b>Stats periods:</b>",
+                "• all - All time (default)",
+                "• today - Today only",
+                "• 3d - Last 3 days",
+                "• week - This week"
+            ]
+            await message.answer("\n".join(lines))
 
         @self.router.message(Command("races"))
         async def cmd_races(message: Message):
@@ -218,7 +258,16 @@ class TelegramNotificationService:
         print(f"  Chat ID: {self.chat_id}")
         print(f"  Listening for notifications and commands...")
 
+        # Verify bot connection
+        try:
+            bot_info = await self.bot.get_me()
+            print(f"  Bot: @{bot_info.username} (ID: {bot_info.id})")
+        except Exception as e:
+            print(f"  ✗ Failed to connect to Telegram: {e}")
+            return
+
         # Start both polling (for commands) and listening (for Redis)
+        print("  Starting polling...")
         await asyncio.gather(
             self.dp.start_polling(self.bot),
             self.listen_loop()
