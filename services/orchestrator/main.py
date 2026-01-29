@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import redis.asyncio as aioredis
 from src.agents.gemini_agent import GeminiAgent
 from src.agents.grok_agent import GrokAgent
+from src.agents.research_agent import ResearchAgent
 from src.config.settings import get_settings
 from src.database.repositories import PredictionRepository
 from src.logging_config import setup_logging
@@ -32,11 +33,15 @@ class AgentOrchestratorService:
         self.redis_client: aioredis.Redis = None
         self.pubsub = None
 
-        # Initialize agents
-        logger.info("Initializing AI agents...")
+        # Initialize Research Agent (runs first, shares results)
+        logger.info("Initializing Research Agent...")
+        self.research_agent = ResearchAgent()
+
+        # Initialize Betting Agents
+        logger.info("Initializing Betting Agents...")
         self.gemini_agent = GeminiAgent()
         self.grok_agent = GrokAgent()
-        logger.info("Agents initialized")
+        logger.info("All agents initialized")
 
         # Initialize database repository
         self.prediction_repo = PredictionRepository(
@@ -82,22 +87,32 @@ class AgentOrchestratorService:
         race_info = race_data['race_info']
         logger.info(f"Processing race | location={race_info['location']} | race_number=R{race_info['race_number']} | url={race_url}")
 
-        # Run both agents
+        # Step 1: Run Research Agent FIRST (single search for both agents)
+        research_context = None
+        if self.settings.agents.research.enabled:
+            logger.info("Running Research Agent to pre-fetch search results...")
+            try:
+                research_context = await self.research_agent.research(race_data)
+                logger.info(f"Research complete | queries={len(research_context.queries_generated)} | results={len(research_context.search_results)}")
+            except Exception as e:
+                logger.error(f"Research Agent failed, betting agents will search independently | error={e}")
+
+        # Step 2: Run Betting Agents (with shared research context)
         if self.settings.agents.parallel_execution:
             # Parallel execution
-            logger.info("Running agents in parallel...")
+            logger.info("Running betting agents in parallel...")
             results = await asyncio.gather(
-                self.run_agent(self.gemini_agent, race_data),
-                self.run_agent(self.grok_agent, race_data),
+                self.run_agent(self.gemini_agent, race_data, research_context),
+                self.run_agent(self.grok_agent, race_data, research_context),
                 return_exceptions=True
             )
 
             gemini_result, grok_result = results
         else:
             # Sequential execution
-            logger.info("Running agents sequentially...")
-            gemini_result = await self.run_agent(self.gemini_agent, race_data)
-            grok_result = await self.run_agent(self.grok_agent, race_data)
+            logger.info("Running betting agents sequentially...")
+            gemini_result = await self.run_agent(self.gemini_agent, race_data, research_context)
+            grok_result = await self.run_agent(self.grok_agent, race_data, research_context)
 
         # Save predictions
         predictions_saved = []
@@ -129,11 +144,16 @@ class AgentOrchestratorService:
             await self.publish_predictions(race_url, predictions_saved)
             logger.info(f"Published {len(predictions_saved)} predictions to Telegram")
 
-    async def run_agent(self, agent, race_data: dict):
+    async def run_agent(self, agent, race_data: dict, research_context=None):
         """Run a single agent on race data."""
         try:
             logger.info(f"Agent analyzing | agent={agent.agent_name}")
-            structured_bet = await agent.analyze_race(race_data)
+
+            # Use pre-fetched research if available
+            if research_context:
+                structured_bet = await agent.analyze_race_with_research(race_data, research_context)
+            else:
+                structured_bet = await agent.analyze_race(race_data)
 
             # Validate confidence threshold
             if structured_bet.confidence_score < self.settings.betting.min_confidence_to_bet:

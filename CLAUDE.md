@@ -74,6 +74,13 @@ The system runs as 5 Docker containers communicating via Redis pub/sub:
    - `StructuredBet` - Betting recommendation with confidence score
    - Various bet types: WinBet, PlaceBet, ExactaBet, etc.
 
+5. **Web Search** (`src/web_search/`)
+   - `DuckDuckGoSearch` - Async search via HTML endpoint (replaces Tavily)
+   - `SiteVisitor` - Extracts content from web pages
+   - `WebResearcher` - Main interface with two modes:
+     - **basic**: Fast single-pass search returning snippets
+     - **deep**: Multi-agent research with decomposition and synthesis
+
 ## Running the System
 
 ### Quick Start (Docker)
@@ -117,6 +124,11 @@ Key `.env` variables:
 - `TELEGRAM_BOT_TOKEN=...` (for notifications)
 - `TELEGRAM_CHAT_ID=...` (target chat for notifications)
 
+Web search configuration:
+- `RACEHORSE_WEB_SEARCH__MODE=basic` ("basic" or "deep")
+- `RACEHORSE_WEB_SEARCH__ENABLED=true`
+- `RACEHORSE_WEB_SEARCH__MAX_RESULTS_PER_QUERY=3`
+
 ## Database Schema
 
 SQLite database `races.db` contains:
@@ -145,6 +157,27 @@ Configured in `src/config/settings.py`:
 - `result_retry_interval`: 120s (retry if results not available)
 - `result_max_retries`: 5
 
+## Web Search Modes
+
+The system uses DuckDuckGo for web research (no API key required):
+
+### Basic Mode (default)
+- Single-pass search returning snippets
+- Fast, low latency
+- Good for quick context gathering
+
+### Deep Mode
+- Multi-agent research loop:
+  1. ComplexityAgent determines if query needs decomposition
+  2. DecomposeAgent breaks complex queries into sub-queries
+  3. Parallel search across all queries
+  4. SiteVisitor extracts content from top pages
+  5. ExtractionAgent pulls relevant information
+  6. SummarizationAgent synthesizes results
+  7. JudgeAgent verifies completeness
+- Slower but more thorough
+- Enable with: `RACEHORSE_WEB_SEARCH__MODE=deep`
+
 ## Key Implementation Notes
 
 - Race times are parsed in SOURCE_TIMEZONE (Perth), stored as UTC
@@ -152,6 +185,7 @@ Configured in `src/config/settings.py`:
 - AI agents run in parallel via `asyncio.gather()` for speed
 - Predictions include confidence scores; bets only placed above threshold (0.5)
 - All services are stateless; state lives in Redis and SQLite
+- Web search results are cached (5 min TTL) to avoid duplicate queries
 
 ## Troubleshooting
 

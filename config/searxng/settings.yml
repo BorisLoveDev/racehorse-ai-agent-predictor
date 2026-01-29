@@ -1,0 +1,25 @@
+use_default_settings: true
+
+server:
+  secret_key: "racehorse-searxng-secret-key-change-in-production"
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+general:
+  debug: false
+  instance_name: "RaceHorse SearXNG"
+
+ui:
+  static_use_hash: true
+
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 30.0

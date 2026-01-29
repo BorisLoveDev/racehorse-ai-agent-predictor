@@ -1,4 +1,24 @@
 services:
+  # SearXNG for web search (replaces Tavily)
+  searxng:
+    image: searxng/searxng:latest
+    container_name: racehorse-searxng
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/searxng:/etc/searxng:rw
+      - searxng_data:/var/cache/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - racehorse-network
+
   # Redis for pub/sub messaging
   redis:
     image: redis:7-alpine
@@ -46,12 +66,15 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      searxng:
+        condition: service_healthy
     env_file:
       - .env
     environment:
       - RACEHORSE_REDIS__HOST=redis
       - RACEHORSE_REDIS__PORT=6379
       - RACEHORSE_DATABASE__PATH=/app/data/races.db
+      - SEARXNG_URL=http://searxng:8080
     volumes:
       - db_data:/app/data
     restart: unless-stopped
@@ -106,6 +129,8 @@ volumes:
   db_data:
     driver: local
   race_data:
+    driver: local
+  searxng_data:
     driver: local
 
 networks:

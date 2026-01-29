@@ -83,14 +83,93 @@ class GrokAgentSettings(BaseSettings):
     enable_web_search: bool = Field(default=True)
 
 
+class ResearchAgentSettings(BaseSettings):
+    """Research agent configuration - runs before betting agents to gather info."""
+
+    model_id: str = Field(
+        default="google/gemini-3-flash-preview",
+        description="Model for research agent (query generation, summarization)"
+    )
+    temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=2000)
+    enabled: bool = Field(
+        default=True,
+        description="Enable research agent to pre-fetch search results"
+    )
+    top_horses_to_research: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Number of top horses to research"
+    )
+    include_jockeys: bool = Field(
+        default=True,
+        description="Include jockey research queries"
+    )
+    include_trainers: bool = Field(
+        default=True,
+        description="Include trainer research queries"
+    )
+
+
 class AgentsSettings(BaseSettings):
     """Agent configuration container."""
 
     gemini: GeminiAgentSettings = Field(default_factory=GeminiAgentSettings)
     grok: GrokAgentSettings = Field(default_factory=GrokAgentSettings)
+    research: ResearchAgentSettings = Field(default_factory=ResearchAgentSettings)
     parallel_execution: bool = Field(
         default=True,
         description="Run both agents in parallel"
+    )
+
+
+class WebSearchSettings(BaseSettings):
+    """Web search configuration."""
+
+    engine: str = Field(
+        default="searxng",
+        description="Search engine: 'searxng' (recommended) or 'duckduckgo'"
+    )
+    searxng_url: str = Field(
+        default="http://localhost:8080",
+        description="SearXNG instance URL"
+    )
+    mode: str = Field(
+        default="raw",
+        description="Search mode: 'off' (disabled), 'raw' (snippets only), 'lite' (LLM extracts), 'deep' (full research)"
+    )
+    enabled: bool = Field(
+        default=True,
+        description="Enable web search for additional context"
+    )
+    max_results_per_query: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Maximum results per search query"
+    )
+    max_queries_per_race: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum total queries per race analysis"
+    )
+    deep_mode_max_sites: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="Maximum sites to visit in deep mode"
+    )
+    enable_cache: bool = Field(
+        default=True,
+        description="Cache search results to avoid duplicates"
+    )
+    cache_ttl_seconds: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description="Cache time-to-live in seconds"
     )
 
 
@@ -100,10 +179,6 @@ class APIKeysSettings(BaseSettings):
     openrouter_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="OpenRouter API key for LLM access"
-    )
-    tavily_api_key: SecretStr = Field(
-        default=SecretStr(""),
-        description="Tavily API key for web search"
     )
     telegram_bot_token: SecretStr = Field(
         default=SecretStr(""),
@@ -152,6 +227,7 @@ class Settings(BaseSettings):
     api_keys: APIKeysSettings = Field(default_factory=APIKeysSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    web_search: WebSearchSettings = Field(default_factory=WebSearchSettings)
 
     # Source timezone (TabTouch's timezone - don't change)
     source_timezone: str = Field(

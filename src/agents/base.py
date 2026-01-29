@@ -1,20 +1,27 @@
 """
 Base agent implementation with LangGraph two-step workflow.
-Step 1: Deep analysis with web search
+Step 1: Deep analysis with web search (or pre-fetched research)
 Step 2: Structured bet output generation
+
+Supports two modes:
+- analyze_race(): Self-contained, performs own web search
+- analyze_race_with_research(): Uses pre-fetched research from ResearchAgent
 """
 
 import json
-from typing import Any, Dict, Optional, TypedDict
+from typing import Any, Dict, Optional, TypedDict, TYPE_CHECKING
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
-from tavily import TavilyClient
 
 from ..config.settings import get_settings
 from ..models.bets import StructuredBetOutput
+from ..web_search import WebResearcher
+
+if TYPE_CHECKING:
+    from .research_agent import RaceResearchContext
 
 
 class AgentState(TypedDict):
@@ -22,6 +29,7 @@ class AgentState(TypedDict):
     race_data: Dict[str, Any]
     search_queries: list[str]
     search_results: list[Dict[str, Any]]
+    research_context: Optional[str]  # Pre-fetched research (formatted)
     analysis: str
     structured_bet: Optional[StructuredBetOutput]
     messages: list[BaseMessage]
@@ -63,16 +71,21 @@ class BaseRaceAgent:
             openai_api_base="https://openrouter.ai/api/v1"
         )
 
-        # Initialize Tavily for web search
-        if enable_web_search:
-            tavily_key = settings.api_keys.tavily_api_key.get_secret_value()
-            if tavily_key:
-                self.tavily_client = TavilyClient(api_key=tavily_key)
-            else:
-                self.tavily_client = None
-                print(f"Warning: Tavily API key not configured for {agent_name}")
+        # Initialize WebResearcher for web search (uses SearXNG)
+        web_search_settings = settings.web_search
+        if enable_web_search and web_search_settings.enabled:
+            self.web_researcher = WebResearcher(
+                mode=web_search_settings.mode,
+                max_results_per_query=web_search_settings.max_results_per_query,
+                max_queries=web_search_settings.max_queries_per_race,
+                deep_mode_max_sites=web_search_settings.deep_mode_max_sites,
+                enable_cache=web_search_settings.enable_cache,
+                cache_ttl_seconds=web_search_settings.cache_ttl_seconds,
+                search_engine=web_search_settings.engine,
+                searxng_url=web_search_settings.searxng_url,
+            )
         else:
-            self.tavily_client = None
+            self.web_researcher = None
 
         # Build the workflow graph
         self.workflow = self._build_workflow()
@@ -98,7 +111,11 @@ class BaseRaceAgent:
 
     def _generate_search_queries(self, state: AgentState) -> AgentState:
         """Step 0: Generate search queries for web research."""
-        if not self.enable_web_search or not self.tavily_client:
+        # Skip if research already provided (from ResearchAgent)
+        if state.get("research_context") or state.get("search_results"):
+            return state
+
+        if not self.enable_web_search or not self.web_researcher:
             state["search_queries"] = []
             return state
 
@@ -122,27 +139,39 @@ class BaseRaceAgent:
             if trainer:
                 queries.append(f"{trainer} trainer racing statistics")
 
-        # Limit to 10 queries to avoid rate limits
-        state["search_queries"] = queries[:10]
+        # Limit queries based on settings
+        settings = get_settings()
+        max_queries = settings.web_search.max_queries_per_race
+        state["search_queries"] = queries[:max_queries]
         return state
 
-    def _web_search(self, state: AgentState) -> AgentState:
-        """Step 1: Perform web searches for additional context."""
-        if not self.tavily_client or not state["search_queries"]:
+    async def _web_search_async(self, state: AgentState) -> AgentState:
+        """Step 1: Perform web searches for additional context (async)."""
+        if not self.web_researcher or not state["search_queries"]:
             state["search_results"] = []
             return state
 
         search_results = []
+        settings = get_settings()
+
         for query in state["search_queries"]:
             try:
-                response = self.tavily_client.search(
-                    query=query,
-                    max_results=3,
-                    search_depth="basic"
-                )
+                # Use the configured mode (basic or deep)
+                result = await self.web_researcher.research(query)
+
+                # Format results to match expected structure
                 search_results.append({
                     "query": query,
-                    "results": response.get("results", [])
+                    "results": [
+                        {
+                            "title": r.get("title", ""),
+                            "url": r.get("url", ""),
+                            "content": r.get("content", "")
+                        }
+                        for sr in result.search_results
+                        for r in sr.results
+                    ],
+                    "summary": result.summary  # Available in deep mode
                 })
             except Exception as e:
                 print(f"Search error for '{query}': {e}")
@@ -150,13 +179,45 @@ class BaseRaceAgent:
         state["search_results"] = search_results
         return state
 
+    def _web_search(self, state: AgentState) -> AgentState:
+        """Step 1: Perform web searches for additional context (sync wrapper)."""
+        import asyncio
+
+        # Skip if research already provided (from ResearchAgent)
+        if state.get("research_context") or state.get("search_results"):
+            return state
+
+        if not self.web_researcher or not state["search_queries"]:
+            state["search_results"] = []
+            return state
+
+        # Run async search in event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Already in async context, create task
+                import nest_asyncio
+                nest_asyncio.apply()
+                return asyncio.get_event_loop().run_until_complete(
+                    self._web_search_async(state)
+                )
+            else:
+                return loop.run_until_complete(self._web_search_async(state))
+        except RuntimeError:
+            # No event loop, create one
+            return asyncio.run(self._web_search_async(state))
+
     def _deep_analysis(self, state: AgentState) -> AgentState:
         """Step 2: Perform deep analysis with race data and search results."""
         race_data = state["race_data"]
         search_results = state["search_results"]
+        research_context = state.get("research_context")
 
-        # Build context
-        context = self._format_race_context(race_data, search_results)
+        # Build context - prefer pre-fetched research if available
+        if research_context:
+            context = self._format_race_context_with_research(race_data, research_context)
+        else:
+            context = self._format_race_context(race_data, search_results)
 
         # Analysis prompt
         analysis_prompt = ChatPromptTemplate.from_messages([
@@ -221,6 +282,20 @@ Remember: Set bet types to null if you don't want to make that bet. Never use am
 
         if search_results:
             context_parts.append("# WEB SEARCH RESULTS")
+
+            # Check for deep mode summaries
+            summaries = [
+                sr.get("summary") for sr in search_results
+                if sr.get("summary")
+            ]
+            if summaries:
+                context_parts.append("\n## Research Summaries")
+                for summary in summaries[:3]:
+                    context_parts.append(summary[:1000])
+                    context_parts.append("")
+
+            # Add individual search results
+            context_parts.append("\n## Search Snippets")
             for sr in search_results:
                 query = sr.get("query", "")
                 results = sr.get("results", [])
@@ -229,8 +304,23 @@ Remember: Set bet types to null if you don't want to make that bet. Never use am
                     title = result.get("title", "")
                     content = result.get("content", "")
                     context_parts.append(f"{idx}. {title}")
-                    context_parts.append(f"   {content[:300]}...")
+                    if content:
+                        context_parts.append(f"   {content[:300]}...")
 
+        return "\n".join(context_parts)
+
+    def _format_race_context_with_research(
+        self,
+        race_data: Dict[str, Any],
+        research_context: str
+    ) -> str:
+        """Format race data with pre-fetched research context."""
+        context_parts = [
+            "# RACE INFORMATION",
+            json.dumps(race_data, indent=2),
+            "",
+            research_context  # Already formatted by ResearchAgent
+        ]
         return "\n".join(context_parts)
 
     def _get_analysis_system_prompt(self) -> str:
@@ -286,11 +376,13 @@ Provide clear reasoning for each bet recommendation.
     async def analyze_race(self, race_data: Dict[str, Any]) -> StructuredBetOutput:
         """
         Main entry point: Analyze a race and generate structured bet output.
+        Performs its own web search (legacy mode).
         """
         initial_state: AgentState = {
             "race_data": race_data,
             "search_queries": [],
             "search_results": [],
+            "research_context": None,
             "analysis": "",
             "structured_bet": None,
             "messages": []
@@ -304,12 +396,71 @@ Provide clear reasoning for each bet recommendation.
 
         return final_state["structured_bet"]
 
+    async def analyze_race_with_research(
+        self,
+        race_data: Dict[str, Any],
+        research_context: "RaceResearchContext"
+    ) -> StructuredBetOutput:
+        """
+        Analyze a race using pre-fetched research from ResearchAgent.
+        This is the preferred method when multiple agents analyze the same race.
+
+        Args:
+            race_data: Race data with race_info and runners
+            research_context: Pre-fetched research from ResearchAgent
+
+        Returns:
+            StructuredBetOutput with betting recommendations
+        """
+        initial_state: AgentState = {
+            "race_data": race_data,
+            "search_queries": research_context.queries_generated,
+            "search_results": research_context.search_results,
+            "research_context": research_context.formatted_context,
+            "analysis": "",
+            "structured_bet": None,
+            "messages": []
+        }
+
+        # Run workflow - will skip search steps since results are pre-populated
+        final_state = await self.workflow.ainvoke(initial_state)
+
+        if not final_state["structured_bet"]:
+            raise ValueError("Failed to generate structured bet output")
+
+        return final_state["structured_bet"]
+
     def analyze_race_sync(self, race_data: Dict[str, Any]) -> StructuredBetOutput:
         """Synchronous version of analyze_race."""
         initial_state: AgentState = {
             "race_data": race_data,
             "search_queries": [],
             "search_results": [],
+            "research_context": None,
+            "analysis": "",
+            "structured_bet": None,
+            "messages": []
+        }
+
+        # Run workflow
+        final_state = self.workflow.invoke(initial_state)
+
+        if not final_state["structured_bet"]:
+            raise ValueError("Failed to generate structured bet output")
+
+        return final_state["structured_bet"]
+
+    def analyze_race_with_research_sync(
+        self,
+        race_data: Dict[str, Any],
+        research_context: "RaceResearchContext"
+    ) -> StructuredBetOutput:
+        """Synchronous version of analyze_race_with_research."""
+        initial_state: AgentState = {
+            "race_data": race_data,
+            "search_queries": research_context.queries_generated,
+            "search_results": research_context.search_results,
+            "research_context": research_context.formatted_context,
             "analysis": "",
             "structured_bet": None,
             "messages": []
