@@ -3,8 +3,7 @@ services:
   searxng:
     image: searxng/searxng:latest
     container_name: racehorse-searxng
-    ports:
-      - "8080:8080"
+    # No external port needed - only accessed internally via Docker network
     volumes:
       - ./config/searxng:/etc/searxng:rw
       - searxng_data:/var/cache/searxng
