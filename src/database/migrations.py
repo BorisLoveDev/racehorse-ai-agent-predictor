@@ -219,7 +219,7 @@ def initialize_default_agents(db_path: str = "races.db") -> None:
     cursor = conn.cursor()
 
     try:
-        # Insert Gemini agent
+        # Insert Gemini agent (optimized: 10K tokens, high reasoning effort)
         cursor.execute("""
             INSERT OR IGNORE INTO agents (agent_name, model_id, provider, config_json)
             VALUES (?, ?, ?, ?)
@@ -227,10 +227,10 @@ def initialize_default_agents(db_path: str = "races.db") -> None:
             "gemini",
             "google/gemini-3-flash-preview",
             "openrouter",
-            '{"temperature": 0.7, "max_tokens": 65536, "reasoning_max_tokens": 32000}'
+            '{"temperature": 0.7, "max_tokens": 10000, "reasoning_effort": "high"}'
         ))
 
-        # Insert Grok agent
+        # Insert Grok agent (optimized: 12K tokens, high reasoning effort)
         cursor.execute("""
             INSERT OR IGNORE INTO agents (agent_name, model_id, provider, config_json)
             VALUES (?, ?, ?, ?)
@@ -238,7 +238,7 @@ def initialize_default_agents(db_path: str = "races.db") -> None:
             "grok",
             "x-ai/grok-4.1-fast",
             "openrouter",
-            '{"temperature": 0.7, "max_tokens": 30000, "reasoning_effort": "high"}'
+            '{"temperature": 0.7, "max_tokens": 12000, "reasoning_effort": "high"}'
         ))
 
         # Initialize statistics for both agents

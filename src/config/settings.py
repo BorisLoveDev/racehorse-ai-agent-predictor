@@ -71,23 +71,28 @@ class GeminiAgentSettings(BaseSettings):
     Gemini 3 Flash supports:
     - Context: 1,048,576 tokens (1M)
     - Max output: 65,536 tokens
-    - Reasoning: thinking levels (minimal, low, medium, high) or max_tokens budget
+    - Reasoning effort: high (~80%), medium (~50%), low (~20%)
+
+    Optimized settings per analysis:
+    - max_tokens: 10,000 (caps runtime/cost, high effort gives ~8K thinking)
+    - reasoning_effort: high (deep analysis with 80% tokens for reasoning)
+    - web_search: false (research agent already gathers data)
     """
 
     model_id: str = Field(
         default="google/gemini-3-flash-preview",
         description="Gemini model ID via OpenRouter"
     )
-    reasoning_max_tokens: int = Field(
-        default=32000,
-        description="Max tokens for reasoning/thinking budget. Gemini 3 Flash supports up to ~32K for deep analysis"
+    reasoning_effort: str = Field(
+        default="high",
+        description="Reasoning effort level: high (~80%), medium (~50%), low (~20%)"
     )
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(
-        default=65536,
-        description="Max output tokens. Gemini 3 Flash supports up to 65,536"
+        default=10000,
+        description="Max output tokens. Capped at 10K for optimal latency/cost"
     )
-    enable_web_search: bool = Field(default=True)
+    enable_web_search: bool = Field(default=False)
 
 
 class GrokAgentSettings(BaseSettings):
@@ -97,6 +102,11 @@ class GrokAgentSettings(BaseSettings):
     - Context: 2,000,000 tokens (2M)
     - Max output: 30,000 tokens
     - Reasoning effort: xhigh (~95%), high (~80%), medium (~50%), low (~20%)
+
+    Optimized settings per analysis:
+    - max_tokens: 12,000 (caps runtime, high effort gives ~9.6K thinking)
+    - reasoning_effort: high (deep analysis, Grok is cheap so ok)
+    - web_search: false (research agent already gathers data)
     """
 
     model_id: str = Field(
@@ -109,18 +119,29 @@ class GrokAgentSettings(BaseSettings):
     )
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(
-        default=30000,
-        description="Max output tokens. Grok 4.1 Fast supports up to 30,000"
+        default=12000,
+        description="Max output tokens. Capped at 12K for optimal latency"
     )
-    enable_web_search: bool = Field(default=True)
+    enable_web_search: bool = Field(default=False)
 
 
 class ResearchAgentSettings(BaseSettings):
-    """Research agent configuration - runs before betting agents to gather info."""
+    """Research agent configuration - runs before betting agents to gather info.
+
+    Optimized settings per analysis:
+    - temperature: 0.3 (factual, deterministic output)
+    - max_tokens: 2000 (sufficient for 5-horse summary)
+    - reasoning_effort: medium (moderate reasoning for complex queries)
+    - web_search: enabled (this is where data is gathered)
+    """
 
     model_id: str = Field(
         default="google/gemini-3-flash-preview",
         description="Model for research agent (query generation, summarization)"
+    )
+    reasoning_effort: str = Field(
+        default="medium",
+        description="Reasoning effort: medium (~50%) for fact-finding queries"
     )
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2000)

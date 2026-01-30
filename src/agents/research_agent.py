@@ -7,6 +7,12 @@ Runs BEFORE betting agents to:
 3. Cache results for both Gemini and Grok to use
 
 This eliminates duplicate searches and ensures consistent context.
+
+Optimized config (per multi-model analysis):
+- model: Gemini 3 Flash (best for factual accuracy)
+- temperature: 0.3 (deterministic, factual output)
+- max_tokens: 2000 (sufficient for query generation)
+- reasoning_effort: medium (~50%) for fact-finding
 """
 
 import asyncio
@@ -69,7 +75,7 @@ class ResearchAgent:
             self.web_researcher = None
             return
 
-        # Initialize LLM for query generation
+        # Initialize LLM for query generation with medium reasoning effort
         api_key = settings.api_keys.openrouter_api_key.get_secret_value()
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY not configured")
@@ -79,7 +85,12 @@ class ResearchAgent:
             temperature=research_settings.temperature,
             max_tokens=research_settings.max_tokens,
             openai_api_key=api_key,
-            openai_api_base="https://openrouter.ai/api/v1"
+            openai_api_base="https://openrouter.ai/api/v1",
+            model_kwargs={
+                "reasoning": {
+                    "effort": research_settings.reasoning_effort
+                }
+            }
         )
 
         # Initialize WebResearcher with shared cache (uses SearXNG)

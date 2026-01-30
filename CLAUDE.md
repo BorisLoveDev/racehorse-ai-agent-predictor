@@ -62,9 +62,19 @@ The system runs as 5 Docker containers communicating via Redis pub/sub:
    - Handles timezone conversions (SOURCE_TIMEZONE: Australia/Perth)
 
 2. **AI Agents** (`src/agents/`)
-   - `GeminiAgent` - Uses google/gemini-3-flash-preview via OpenRouter
-   - `GrokAgent` - Uses x-ai/grok-4.1-fast via OpenRouter
+   - `ResearchAgent` - Gathers data FIRST, shares with betting agents
+   - `GeminiAgent` - Rigorous analysis via google/gemini-3-flash-preview
+   - `GrokAgent` - Creative insight via x-ai/grok-4.1-fast
    - Both return `StructuredBet` with win/place/exacta/trifecta/quinella/first4/qps bets
+
+   **Optimized Settings (per multi-model analysis):**
+   | Agent | Reasoning | Max Tokens | Web Search | Cost/M |
+   |-------|-----------|------------|------------|--------|
+   | Research | medium (50%) | 2,000 | Enabled | ~$3 |
+   | Gemini | high (80%) | 10,000 | Disabled | ~$3 |
+   | Grok | high (80%) | 12,000 | Disabled | ~$0.50 |
+
+   Betting agents don't need web search - research agent gathers data first.
 
 3. **Database** (`src/database/`)
    - `migrations.py` - Schema setup for agents, predictions, outcomes

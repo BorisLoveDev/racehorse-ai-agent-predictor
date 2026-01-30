@@ -6,6 +6,12 @@ Grok 4.1 Fast specs:
 - Context: 2,000,000 tokens (2M)
 - Max output: 30,000 tokens
 - Reasoning: xhigh (~95%), high (~80%), medium (~50%), low (~20%)
+
+Optimized config (per multi-model analysis):
+- max_tokens: 12,000 (caps runtime)
+- reasoning_effort: high (~9.6K thinking tokens)
+- web_search: disabled (research agent gathers data)
+- Cost: ~$0.50/M tokens - very cheap, so high effort is ok
 """
 
 from langchain_openai import ChatOpenAI
@@ -56,24 +62,24 @@ class GrokAgent(BaseRaceAgent):
         grok_specific = """
 
 GROK AGENT APPROACH (HIGH REASONING MODE - 80% tokens for thinking):
-You are configured for deep reasoning and analytical rigor.
-Your analysis should:
-- Explore multiple hypotheses and scenarios
-- Consider non-obvious factors and edge cases
-- Perform deep causal reasoning about performance factors
-- Identify subtle patterns others might miss
-- Challenge conventional wisdom when data supports it
-- Think through race dynamics step-by-step
+You are configured for deep reasoning with strong conversational insight.
+You have ~9.6K tokens for reasoning - use them for thorough analysis.
 
-Take your time to reason through complex interactions between:
+Your strengths:
+- Exploring multiple hypotheses and scenarios
+- Creative insight and intuitive pattern recognition
+- Engaging explanations that capture nuance
+- Challenge conventional wisdom when data supports it
+
+Analyze systematically:
 - Horse form trends (improving vs declining)
-- Jockey/trainer combinations and their track records
+- Jockey/trainer combinations and track records
 - Barrier draw advantages for different running styles
 - Weather/track condition impacts
 - Class levels and weight adjustments
 - Pace scenarios and tactical positioning
 
-Don't just state facts - explain the reasoning chain behind your conclusions.
+Provide reasoning chains, not just conclusions.
 """
         return base_prompt + grok_specific
 
@@ -83,14 +89,15 @@ Don't just state facts - explain the reasoning chain behind your conclusions.
 
         grok_specific = """
 
-As Grok with high reasoning effort (80% thinking budget), your betting strategy emphasizes:
+As Grok with high reasoning effort (~9.6K thinking tokens), your betting strategy emphasizes:
 - Deep value identification through multi-factor analysis
 - Contrarian plays when reasoning supports them
 - Complex exotic bets (Trifecta, First4) when confidence is high
 - Risk-adjusted bet sizing based on edge calculation
 - Willingness to skip bets when edge is unclear
 
-Your key_factors should reflect the depth of your reasoning, not just surface observations.
-Your confidence_score should reflect genuine epistemic uncertainty after deep analysis.
+Your key_factors should reflect depth of reasoning, not just surface observations.
+Your confidence_score should reflect genuine uncertainty after analysis.
+Complement Gemini's rigorous logic with your creative/intuitive insights.
 """
         return base_prompt + grok_specific
