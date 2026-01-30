@@ -1,6 +1,11 @@
 """
-Grok agent implementation using x-ai/grok-2-1212 via OpenRouter.
-Configured with high reasoning effort for deep analysis.
+Grok agent implementation using x-ai/grok-4.1-fast via OpenRouter.
+Configured with high reasoning effort (~80% tokens for reasoning) for deep analysis.
+
+Grok 4.1 Fast specs:
+- Context: 2,000,000 tokens (2M)
+- Max output: 30,000 tokens
+- Reasoning: xhigh (~95%), high (~80%), medium (~50%), low (~20%)
 """
 
 from langchain_openai import ChatOpenAI
@@ -11,8 +16,8 @@ from ..config.settings import get_settings
 
 class GrokAgent(BaseRaceAgent):
     """
-    Grok agent with high reasoning effort for in-depth race analysis.
-    Uses xAI's Grok model via OpenRouter with extended reasoning capabilities.
+    Grok agent with high reasoning effort for deep analytical depth.
+    Uses xAI's Grok 4.1 Fast via OpenRouter with extended reasoning capabilities.
     """
 
     def __init__(self):
@@ -29,6 +34,7 @@ class GrokAgent(BaseRaceAgent):
         )
 
         # Override LLM with Grok-specific configuration
+        # OpenRouter uses {"reasoning": {"effort": "xhigh"}} format
         openrouter_key = settings.api_keys.openrouter_api_key.get_secret_value()
         self.llm = ChatOpenAI(
             model=grok_settings.model_id,
@@ -37,7 +43,9 @@ class GrokAgent(BaseRaceAgent):
             openai_api_key=openrouter_key,
             openai_api_base="https://openrouter.ai/api/v1",
             model_kwargs={
-                "reasoning_effort": grok_settings.reasoning_effort
+                "reasoning": {
+                    "effort": grok_settings.reasoning_effort
+                }
             }
         )
 
@@ -47,8 +55,8 @@ class GrokAgent(BaseRaceAgent):
 
         grok_specific = """
 
-GROK AGENT APPROACH (HIGH REASONING MODE):
-You are configured for maximum reasoning depth and analytical rigor.
+GROK AGENT APPROACH (HIGH REASONING MODE - 80% tokens for thinking):
+You are configured for deep reasoning and analytical rigor.
 Your analysis should:
 - Explore multiple hypotheses and scenarios
 - Consider non-obvious factors and edge cases
@@ -75,7 +83,7 @@ Don't just state facts - explain the reasoning chain behind your conclusions.
 
         grok_specific = """
 
-As Grok with high reasoning effort, your betting strategy emphasizes:
+As Grok with high reasoning effort (80% thinking budget), your betting strategy emphasizes:
 - Deep value identification through multi-factor analysis
 - Contrarian plays when reasoning supports them
 - Complex exotic bets (Trifecta, First4) when confidence is high

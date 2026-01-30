@@ -227,7 +227,7 @@ def initialize_default_agents(db_path: str = "races.db") -> None:
             "gemini",
             "google/gemini-3-flash-preview",
             "openrouter",
-            '{"temperature": 0.7, "max_tokens": 16928}'
+            '{"temperature": 0.7, "max_tokens": 65536, "reasoning_max_tokens": 32000}'
         ))
 
         # Insert Grok agent
@@ -238,7 +238,7 @@ def initialize_default_agents(db_path: str = "races.db") -> None:
             "grok",
             "x-ai/grok-4.1-fast",
             "openrouter",
-            '{"temperature": 0.7, "max_tokens": 16928, "reasoning_effort": "high"}'
+            '{"temperature": 0.7, "max_tokens": 30000, "reasoning_effort": "high"}'
         ))
 
         # Initialize statistics for both agents

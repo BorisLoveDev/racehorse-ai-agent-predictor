@@ -66,19 +66,38 @@ class BettingSettings(BaseSettings):
 
 
 class GeminiAgentSettings(BaseSettings):
-    """Gemini agent configuration."""
+    """Gemini agent configuration.
+
+    Gemini 3 Flash supports:
+    - Context: 1,048,576 tokens (1M)
+    - Max output: 65,536 tokens
+    - Reasoning: thinking levels (minimal, low, medium, high) or max_tokens budget
+    """
 
     model_id: str = Field(
         default="google/gemini-3-flash-preview",
         description="Gemini model ID via OpenRouter"
     )
+    reasoning_max_tokens: int = Field(
+        default=32000,
+        description="Max tokens for reasoning/thinking budget. Gemini 3 Flash supports up to ~32K for deep analysis"
+    )
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=8000)
+    max_tokens: int = Field(
+        default=65536,
+        description="Max output tokens. Gemini 3 Flash supports up to 65,536"
+    )
     enable_web_search: bool = Field(default=True)
 
 
 class GrokAgentSettings(BaseSettings):
-    """Grok agent configuration."""
+    """Grok agent configuration.
+
+    Grok 4.1 Fast supports:
+    - Context: 2,000,000 tokens (2M)
+    - Max output: 30,000 tokens
+    - Reasoning effort: xhigh (~95%), high (~80%), medium (~50%), low (~20%)
+    """
 
     model_id: str = Field(
         default="x-ai/grok-4.1-fast",
@@ -86,10 +105,13 @@ class GrokAgentSettings(BaseSettings):
     )
     reasoning_effort: str = Field(
         default="high",
-        description="Reasoning effort level for Grok"
+        description="Reasoning effort level: xhigh (~95%), high (~80%), medium (~50%), low (~20%)"
     )
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=8000)
+    max_tokens: int = Field(
+        default=30000,
+        description="Max output tokens. Grok 4.1 Fast supports up to 30,000"
+    )
     enable_web_search: bool = Field(default=True)
 
 
