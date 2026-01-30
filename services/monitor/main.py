@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import redis.asyncio as aioredis
 from tabtouch_parser import TabTouchParser
-from src.config.settings import get_settings
+from src.config.settings import get_settings, get_version
 from src.logging_config import setup_logging
 
 # Initialize logger
@@ -43,7 +43,7 @@ class RaceMonitorService:
             decode_responses=True
         )
 
-        logger.info("Race Monitor Service started")
+        logger.info(f"🚀 Race Monitor Service v{get_version()} started")
         logger.info(f"Checking races every {self.settings.timing.monitor_poll_interval}s")
         logger.info(f"Trigger window: {self.settings.timing.minutes_before_race + 2} min before to 1 min after race start")
 

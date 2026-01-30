@@ -9,6 +9,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -21,7 +22,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, BufferedInputFile
 from tabtouch_parser import TabTouchParser
 
-from src.config.settings import get_settings
+from src.config.settings import get_settings, get_version
 from src.database.repositories import (
     PredictionRepository,
     OutcomeRepository,
@@ -497,7 +498,7 @@ class TelegramNotificationService:
             "results:evaluated"
         )
 
-        logger.info("Telegram Notification Service started")
+        logger.info(f"🚀 Telegram Notification Service v{get_version()} started")
         logger.info(f"Chat ID: {self.chat_id}")
         logger.info("Listening for notifications and commands...")
 
@@ -551,8 +552,13 @@ class TelegramNotificationService:
 
             # Format and send message
             message = self._format_prediction_message(prediction)
-            await self.send_message(message)
-            logger.info(f"Sent prediction | agent={agent_name} | prediction_id={prediction_id}")
+            message_id = await self.send_message(message)
+
+            # Save message_id for reply-to
+            if message_id:
+                self.prediction_repo.update_telegram_message_id(prediction_id, message_id)
+
+            logger.info(f"Sent prediction | agent={agent_name} | prediction_id={prediction_id} | msg_id={message_id}")
 
     async def handle_results_evaluated(self, data: dict):
         """Handle results evaluation notification."""
@@ -573,10 +579,13 @@ class TelegramNotificationService:
                 logger.warning(f"Prediction or outcome not found | prediction_id={prediction_id}")
                 continue
 
-            # Format and send message
+            # Get message_id for reply-to
+            reply_to = self.prediction_repo.get_telegram_message_id(prediction_id)
+
+            # Format and send message as reply to original prediction
             message = self._format_result_message(prediction, outcome)
-            await self.send_message(message)
-            logger.info(f"Sent result | agent={agent_name} | prediction_id={prediction_id}")
+            await self.send_message(message, reply_to_message_id=reply_to)
+            logger.info(f"Sent result | agent={agent_name} | prediction_id={prediction_id} | reply_to={reply_to}")
 
     def _format_prediction_message(self, prediction: dict) -> str:
         """Format prediction as Telegram message."""
@@ -590,9 +599,12 @@ class TelegramNotificationService:
         agent_names = {1: "Gemini", 2: "Grok"}
         agent_name = agent_names.get(agent_id, f"Agent {agent_id}")
 
+        race_url = prediction.get("race_url", "")
+
         lines = [
             f"<b>🏇 New Prediction - {agent_name}</b>",
             f"<b>Race:</b> {race_location} R{race_number}",
+            f"<a href=\"{race_url}\">📎 Race Page</a>",
             f"<b>Confidence:</b> {prediction['confidence_score']:.1%}",
             f"<b>Risk Level:</b> {prediction['risk_level'].capitalize()}",
             "",
@@ -800,15 +812,18 @@ class TelegramNotificationService:
 
         return "\n".join(lines)
 
-    async def send_message(self, text: str):
-        """Send a message to Telegram."""
+    async def send_message(self, text: str, reply_to_message_id: int = None) -> Optional[int]:
+        """Send a message to Telegram and return the message_id."""
         try:
-            await self.bot.send_message(
+            message = await self.bot.send_message(
                 chat_id=self.chat_id,
-                text=text
+                text=text,
+                reply_to_message_id=reply_to_message_id
             )
+            return message.message_id
         except Exception as e:
             logger.error(f"Failed to send Telegram message: {e}", exc_info=True)
+            return None
 
     async def shutdown(self):
         """Shutdown the service."""

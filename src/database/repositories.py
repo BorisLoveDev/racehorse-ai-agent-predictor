@@ -151,6 +151,33 @@ class PredictionRepository:
         finally:
             conn.close()
 
+    def update_telegram_message_id(self, prediction_id: int, message_id: int) -> None:
+        """Update the Telegram message ID for a prediction (for reply-to)."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE predictions SET telegram_message_id = ? WHERE prediction_id = ?",
+                (message_id, prediction_id)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_telegram_message_id(self, prediction_id: int) -> Optional[int]:
+        """Get the Telegram message ID for a prediction."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT telegram_message_id FROM predictions WHERE prediction_id = ?",
+                (prediction_id,)
+            )
+            result = cursor.fetchone()
+            return result[0] if result and result[0] else None
+        finally:
+            conn.close()
+
     def get_predictions_for_race(self, race_url: str) -> list[dict]:
         """Get all predictions for a specific race."""
         conn = sqlite3.connect(self.db_path)

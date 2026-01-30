@@ -5,24 +5,19 @@ Automated horse racing analysis system powered by dual AI agents (Gemini & Grok)
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Race Monitor   │────▶│ Agent Orchestrator│────▶│ Results Tracker │
-│  (Playwright)   │     │ (LangChain/Graph) │     │  (Evaluator)    │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-        │                       │                        │
-        └───────────────────────┼────────────────────────┘
-                                ▼
-                        ┌──────────────┐
-                        │    Redis     │
-                        │  (Pub/Sub)   │
-                        └──────────────┘
-                                │
-                        ┌───────┴───────┐
-                        ▼               ▼
-                 ┌──────────┐    ┌──────────┐
-                 │ SQLite   │    │ Telegram │
-                 │ (races.db)│    │   Bot    │
-                 └──────────┘    └──────────┘
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Monitor   │────▶│    Redis     │◀────│ Orchestrator│
+│  (scraper)  │     │  (pub/sub)   │     │ (AI agents) │
+└─────────────┘     └──────────────┘     └─────────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        ┌─────────┐  ┌──────────┐  ┌──────────┐
+        │ Results │  │ Telegram │  │ SearXNG  │
+        │(checker)│  │  (notify)│  │ (search) │
+        └─────────┘  └──────────┘  └──────────┘
+              │            │
+              └────────────┴──────▶ SQLite (races.db)
 ```
 
 ## Features
@@ -30,9 +25,9 @@ Automated horse racing analysis system powered by dual AI agents (Gemini & Grok)
 - **Dual AI Analysis**: Gemini (fast pattern recognition) + Grok (deep reasoning)
 - **Automated Monitoring**: Continuous race monitoring with configurable timing
 - **Structured Betting**: Win, Place, Exacta, Quinella, Trifecta, First4, QPS bets
-- **Web Search Integration**: Tavily-powered research on horses, jockeys, trainers
+- **Web Search Integration**: SearXNG-powered research on horses, jockeys, trainers
 - **Performance Tracking**: Comprehensive statistics and ROI tracking
-- **Telegram Notifications**: Real-time predictions and results
+- **Telegram Notifications**: Real-time predictions and results with reply threading
 - **Microservices Architecture**: Docker-based services with Redis pub/sub
 
 ## Quick Start
@@ -42,7 +37,6 @@ Automated horse racing analysis system powered by dual AI agents (Gemini & Grok)
 - Docker and Docker Compose
 - API Keys:
   - [OpenRouter](https://openrouter.ai/) for LLM access
-  - [Tavily](https://tavily.com/) for web search
   - [Telegram Bot](https://core.telegram.org/bots#how-do-i-create-a-bot) for notifications
 
 ### Setup
@@ -60,14 +54,15 @@ cp .env.example .env
 
 3. Edit `.env` with your API keys:
 ```bash
-nano .env  # or use your preferred editor
+nano .env
 ```
 
 Required variables:
-- `RACEHORSE_API_KEYS__OPENROUTER_API_KEY`
-- `RACEHORSE_API_KEYS__TAVILY_API_KEY`
-- `RACEHORSE_API_KEYS__TELEGRAM_BOT_TOKEN`
-- `RACEHORSE_API_KEYS__TELEGRAM_CHAT_ID`
+```
+RACEHORSE_API_KEYS__OPENROUTER_API_KEY=sk-or-...
+RACEHORSE_API_KEYS__TELEGRAM_BOT_TOKEN=123456:ABC-...
+RACEHORSE_API_KEYS__TELEGRAM_CHAT_ID=-100...
+```
 
 4. Build and run:
 ```bash
@@ -75,203 +70,121 @@ Required variables:
 docker build -t racehorse-base:latest -f Dockerfile.base .
 
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ## Services
 
-### 1. Monitor Service
-- Polls TabTouch for upcoming races
-- Triggers analysis N minutes before race start
-- Schedules result checks
+| Service | Description |
+|---------|-------------|
+| **monitor** | Polls TabTouch for upcoming races, triggers analysis 3-5 min before start |
+| **orchestrator** | Runs Gemini & Grok agents in parallel, saves predictions |
+| **results** | Waits for race completion, evaluates predictions, updates statistics |
+| **telegram** | Sends notifications, handles bot commands (/stats, /history, etc.) |
+| **redis** | Message broker for pub/sub communication |
+| **searxng** | Self-hosted web search for horse/jockey research |
 
-### 2. Orchestrator Service
-- Runs both AI agents in parallel
-- Saves predictions to database
-- Publishes to Telegram
+## Project Structure
 
-### 3. Results Service
-- Waits for race completion
-- Fetches results and evaluates predictions
-- Updates agent statistics
+```
+racehorse-agent/
+├── src/
+│   ├── agents/              # AI agents (Gemini, Grok, Research)
+│   ├── config/              # Pydantic settings
+│   ├── database/            # Migrations & repositories
+│   ├── models/              # Bet schemas
+│   └── web_search/          # SearXNG integration
+├── services/
+│   ├── monitor/             # Race monitoring service
+│   ├── orchestrator/        # Agent orchestration service
+│   ├── results/             # Results evaluation service
+│   └── telegram/            # Telegram bot service
+├── config/
+│   └── searxng/             # SearXNG configuration
+├── tests/                   # Integration tests
+├── tabtouch_parser.py       # TabTouch scraper
+├── docker-compose.yml       # Service orchestration
+├── Dockerfile.base          # Base image with dependencies
+└── version.txt              # Current version
+```
 
-### 4. Telegram Service
-- Sends prediction notifications
-- Sends result notifications with P/L
-- Periodic statistics updates
+## AI Agents
+
+### Gemini Agent
+- **Model**: `google/gemini-3-flash-preview`
+- **Strengths**: Fast pattern recognition, efficient data synthesis
+- **Strategy**: Data-driven, diversified bets, balanced risk-reward
+
+### Grok Agent
+- **Model**: `x-ai/grok-4.1-fast`
+- **Reasoning**: High effort mode
+- **Strengths**: Deep causal analysis, non-obvious factors
+- **Strategy**: Value identification, complex exotics, contrarian plays
 
 ## Configuration
 
 All configuration via environment variables (see `.env.example`).
 
-Key settings:
-
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RACEHORSE_TIMING__MINUTES_BEFORE_RACE` | 3 | Trigger analysis N min before race |
-| `RACEHORSE_TIMING__RESULT_WAIT_MINUTES` | 15 | Wait N min for results |
+| `RACEHORSE_TIMING__RESULT_WAIT_MINUTES` | 15 | Wait N min after race for results |
 | `RACEHORSE_BETTING__MIN_CONFIDENCE_TO_BET` | 0.5 | Min confidence threshold |
-| `RACEHORSE_AGENTS__PARALLEL_EXECUTION` | true | Run agents in parallel |
+| `RACEHORSE_WEB_SEARCH__MODE` | lite | Search mode: off, raw, lite, deep |
 
-## AI Agents
+## Telegram Commands
 
-### Gemini Agent
-- **Model**: `google/gemini-2.0-flash-exp:free`
-- **Strengths**: Fast pattern recognition, efficient data synthesis
-- **Strategy**: Data-driven, diversified bets, balanced risk-reward
-
-### Grok Agent
-- **Model**: `x-ai/grok-2-1212`
-- **Reasoning**: High effort mode
-- **Strengths**: Deep causal analysis, non-obvious factors
-- **Strategy**: Value identification, complex exotics, contrarian plays
-
-## Database Schema
-
-### Core Tables
-- `agents`: AI agent configurations
-- `predictions`: Structured bet predictions
-- `prediction_outcomes`: Results and payouts
-- `agent_statistics`: Aggregated performance metrics
-
-### Key Metrics
-- Total predictions, bets, wins, losses
-- Net profit/loss, ROI percentage
-- Bet type breakdown (Win, Place, Exacta, etc.)
-
-## Development
-
-### Local Development (without Docker)
-
-1. Create virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-playwright install chromium
-```
-
-3. Run database migrations:
-```bash
-python3 src/database/migrations.py
-```
-
-4. Start Redis locally:
-```bash
-redis-server
-```
-
-5. Run services individually:
-```bash
-# Terminal 1: Monitor
-python3 services/monitor/main.py
-
-# Terminal 2: Orchestrator
-python3 services/orchestrator/main.py
-
-# Terminal 3: Results
-python3 services/results/main.py
-
-# Terminal 4: Telegram
-python3 services/telegram/main.py
-```
-
-### Project Structure
-
-```
-racehorse-agent/
-├── src/
-│   ├── config/
-│   │   └── settings.py         # Pydantic-Settings config
-│   ├── models/
-│   │   └── bets.py             # Structured bet schemas
-│   ├── agents/
-│   │   ├── base.py             # Base agent + LangGraph workflow
-│   │   ├── gemini_agent.py     # Gemini implementation
-│   │   └── grok_agent.py       # Grok implementation
-│   └── database/
-│       ├── migrations.py       # Schema setup
-│       └── repositories.py     # Data access layer
-└── services/
-    ├── monitor/main.py         # Race monitoring
-    ├── orchestrator/main.py    # Agent execution
-    ├── results/main.py         # Results evaluation
-    └── telegram/main.py        # Notifications
-```
+| Command | Description |
+|---------|-------------|
+| `/start` | Welcome message and help |
+| `/races` | Show upcoming races |
+| `/status` | Show active bets awaiting results |
+| `/history [N]` | Show last N results (default 5) |
+| `/stats [period]` | Statistics with P/L chart (all/today/3d/week) |
+| `/evaluate` | Manually check results for pending bets |
 
 ## Monitoring
 
-### View Logs
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
-docker-compose logs -f monitor
-docker-compose logs -f orchestrator
-docker-compose logs -f results
-docker-compose logs -f telegram
+docker compose logs -f orchestrator
+
+# Check health
+docker compose ps
+
+# Restart service
+docker compose restart telegram
 ```
 
-### Check Service Health
-```bash
-docker-compose ps
-```
+## Database
 
-### View Statistics
-Statistics are automatically sent to Telegram after each race evaluation.
-
-Or query database directly:
-```bash
-sqlite3 races.db "SELECT * FROM agent_statistics"
-```
+SQLite database with tables:
+- `agents` - AI agent configurations
+- `predictions` - Structured bet predictions with odds snapshot
+- `prediction_outcomes` - Results, payouts, P/L
+- `agent_statistics` - Aggregated performance metrics
 
 ## Troubleshooting
 
 ### Services not starting
-- Check `.env` file has all required API keys
-- Verify Redis is running: `docker-compose ps redis`
-- Check logs: `docker-compose logs <service-name>`
+- Check `.env` has all required API keys
+- Verify Redis is healthy: `docker compose logs redis`
 
 ### No predictions generated
-- Verify OpenRouter API key is valid
-- Check Tavily API key (optional but recommended)
-- Ensure confidence threshold isn't too high
+- Check OpenRouter API key is valid
 - Review orchestrator logs for errors
+- Verify warmup messages on startup
 
 ### Results not evaluating
-- Races may not have results yet (check TabTouch manually)
-- Verify `RESULT_WAIT_MINUTES` setting
+- Race results may not be posted yet
 - Check results service logs
-
-### Telegram not working
-- Verify bot token and chat ID
-- Test bot with /start command
-- Check telegram service logs
-
-## Performance Tuning
-
-### Agent Configuration
-- Adjust `TEMPERATURE` for more/less randomness
-- Modify `MAX_TOKENS` for longer/shorter analysis
-- Toggle `ENABLE_WEB_SEARCH` to save API costs
-
-### Timing
-- `MINUTES_BEFORE_RACE`: Earlier = more time, but odds may change
-- `MONITOR_POLL_INTERVAL`: Lower = more frequent checks, higher load
-- `RESULT_WAIT_MINUTES`: Adjust based on typical result posting time
-
-### Betting
-- `MIN_CONFIDENCE_TO_BET`: Higher = fewer but more confident bets
-- `DEFAULT_BET_AMOUNT`: Virtual stake size for tracking
-- `ENABLE_EXOTIC_BETS`: Disable for simpler strategies
+- Use `/evaluate` command to manually trigger
 
 ## License
 
@@ -279,4 +192,4 @@ MIT License
 
 ## Disclaimer
 
-This system is for educational and research purposes only. It analyzes horse racing data but does not place real bets. Always gamble responsibly and follow local laws and regulations.
+This system is for educational and research purposes only. It analyzes horse racing data but does not place real bets. Always gamble responsibly.

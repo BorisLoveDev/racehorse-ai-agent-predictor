@@ -3,8 +3,18 @@ Centralized configuration for the Horse Racing Betting Agent System.
 Uses Pydantic Settings with environment variable support.
 """
 
+from pathlib import Path
+
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def get_version() -> str:
+    """Load version from version.txt file."""
+    version_file = Path(__file__).parent.parent.parent / "version.txt"
+    if version_file.exists():
+        return version_file.read_text().strip()
+    return "0.0.0"
 
 
 class TimingSettings(BaseSettings):
@@ -136,7 +146,7 @@ class WebSearchSettings(BaseSettings):
         description="SearXNG instance URL"
     )
     mode: str = Field(
-        default="raw",
+        default="lite",
         description="Search mode: 'off' (disabled), 'raw' (snippets only), 'lite' (LLM extracts), 'deep' (full research)"
     )
     enabled: bool = Field(

@@ -32,6 +32,19 @@ def add_odds_columns(cursor: sqlite3.Cursor) -> None:
         print("  ✓ Added actual_dividends_json to prediction_outcomes table")
 
 
+def add_telegram_message_id_column(cursor: sqlite3.Cursor) -> None:
+    """Add telegram_message_id column for reply-to feature."""
+    cursor.execute("PRAGMA table_info(predictions)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "telegram_message_id" not in columns:
+        cursor.execute("""
+            ALTER TABLE predictions
+            ADD COLUMN telegram_message_id INTEGER
+        """)
+        print("  ✓ Added telegram_message_id to predictions table")
+
+
 def run_migrations(db_path: str = "races.db") -> None:
     """Run all database migrations."""
     conn = sqlite3.connect(db_path)
@@ -185,6 +198,9 @@ def run_migrations(db_path: str = "races.db") -> None:
 
         # Add new columns for odds and dividends (Stage 1)
         add_odds_columns(cursor)
+
+        # Add telegram_message_id for reply-to feature
+        add_telegram_message_id_column(cursor)
 
         conn.commit()
         print("✓ Database migrations completed successfully")

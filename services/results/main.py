@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import redis.asyncio as aioredis
 from tabtouch_parser import TabTouchParser
-from src.config.settings import get_settings
+from src.config.settings import get_settings, get_version
 from src.database.repositories import PredictionRepository, OutcomeRepository
 from src.logging_config import setup_logging
 
@@ -71,7 +71,7 @@ class ResultsEvaluationService:
         self.pubsub = self.redis_client.pubsub()
         await self.pubsub.subscribe("race:schedule_result_check")
 
-        logger.info("Results Evaluation Service started")
+        logger.info(f"🚀 Results Evaluation Service v{get_version()} started")
 
         # Restore scheduled checks from database on startup
         restored = await self.restore_scheduled_checks()

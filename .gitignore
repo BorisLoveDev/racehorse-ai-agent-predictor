@@ -45,10 +45,11 @@ races.db
 *~
 .DS_Store
 
-# Claude Code (keep settings and rules in git)
+# Claude Code (keep rules in git, ignore local settings)
 .claude/conversations/
 .claude/data/
 .claude/settings.json
+.claude/settings.local.json
 
 # Race data (optional - comment out if you want to track race data files)
 race_data/

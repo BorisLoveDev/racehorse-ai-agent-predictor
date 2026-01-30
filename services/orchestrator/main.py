@@ -17,7 +17,7 @@ import redis.asyncio as aioredis
 from src.agents.gemini_agent import GeminiAgent
 from src.agents.grok_agent import GrokAgent
 from src.agents.research_agent import ResearchAgent
-from src.config.settings import get_settings
+from src.config.settings import get_settings, get_version
 from src.database.repositories import PredictionRepository
 from src.logging_config import setup_logging
 
@@ -48,6 +48,27 @@ class AgentOrchestratorService:
             db_path=self.settings.database.path
         )
 
+    async def warmup_agents(self):
+        """Warmup agents to verify LLM connectivity."""
+        from langchain_core.messages import HumanMessage
+
+        logger.info("Warming up agents...")
+
+        agents = [
+            (self.gemini_agent, "Gemini"),
+            (self.grok_agent, "Grok")
+        ]
+
+        for agent, name in agents:
+            try:
+                response = await agent.llm.ainvoke([
+                    HumanMessage(content="Say 'ready' if you can respond.")
+                ])
+                response_text = response.content if hasattr(response, 'content') else str(response)
+                logger.info(f"  {name}: {response_text[:100]}")
+            except Exception as e:
+                logger.error(f"  {name} warmup failed: {e}")
+
     async def start(self):
         """Start the orchestrator service."""
         # Connect to Redis
@@ -63,7 +84,11 @@ class AgentOrchestratorService:
         self.pubsub = self.redis_client.pubsub()
         await self.pubsub.subscribe("race:ready_for_analysis")
 
-        logger.info("Agent Orchestrator Service started")
+        logger.info(f"🚀 Agent Orchestrator Service v{get_version()} started")
+
+        # Warmup agents to verify connectivity
+        await self.warmup_agents()
+
         logger.info("Listening for races to analyze...")
 
         # Start listening loop
