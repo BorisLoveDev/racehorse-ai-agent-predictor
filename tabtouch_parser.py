@@ -868,7 +868,7 @@ class TabTouchParser:
         return order
 
     async def _parse_dividends(self) -> dict:
-        """Парсинг дивидендов"""
+        """Parse dividends (always returns float for amount)."""
         dividends = {}
 
         div_types = ["Quinella", "Exacta", "Trifecta", "First 4", "Double", "Quaddie"]
@@ -878,14 +878,18 @@ class TabTouchParser:
                 item = self.page.locator(f'li:has-text("{div_type}")').first
                 if await item.count() > 0:
                     text = await item.inner_text()
-                    # Ищем сумму (формат $XX.XX или $X,XXX.XX)
+                    # Find amount (format $XX.XX or $X,XXX.XX)
                     amount_match = re.search(r'\$[\d,]+\.?\d*', text)
-                    # Ищем комбинацию (формат X-X-X)
+                    # Find combination (format X-X-X)
                     combo_match = re.search(r'\d+-\d+(?:-\d+)*', text)
+
+                    # Parse amount to float (remove $ and commas)
+                    amount_str = amount_match.group() if amount_match else "0"
+                    amount_float = float(amount_str.replace("$", "").replace(",", ""))
 
                     dividends[div_type.lower().replace(" ", "_")] = {
                         "combination": combo_match.group() if combo_match else "",
-                        "amount": amount_match.group() if amount_match else ""
+                        "amount": amount_float  # Always float, not string
                     }
             except:
                 continue

@@ -289,31 +289,32 @@ class ResultsEvaluationService:
         if dividends.get("exacta") and len(finishing_order) >= 2:
             combo = f"{finishing_order[0]['number']}-{finishing_order[1]['number']}"
             div = dividends["exacta"]
-            actual["exacta"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+            # TabTouchParser returns dict with "amount" (float)
+            actual["exacta"] = {combo: div.get("amount", 0) if isinstance(div, dict) else div}
 
         # Quinella
         if dividends.get("quinella") and len(finishing_order) >= 2:
             horses = sorted([finishing_order[0]["number"], finishing_order[1]["number"]])
             combo = f"{horses[0]}-{horses[1]}"
             div = dividends["quinella"]
-            actual["quinella"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+            actual["quinella"] = {combo: div.get("amount", 0) if isinstance(div, dict) else div}
 
         # Trifecta
         if dividends.get("trifecta") and len(finishing_order) >= 3:
             combo = f"{finishing_order[0]['number']}-{finishing_order[1]['number']}-{finishing_order[2]['number']}"
             div = dividends["trifecta"]
-            actual["trifecta"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+            actual["trifecta"] = {combo: div.get("amount", 0) if isinstance(div, dict) else div}
 
         # First4
         if dividends.get("first4") and len(finishing_order) >= 4:
             combo = "-".join(str(h["number"]) for h in finishing_order[:4])
             div = dividends["first4"]
-            actual["first4"] = {combo: div if not isinstance(div, dict) else div.get("amount", 0)}
+            actual["first4"] = {combo: div.get("amount", 0) if isinstance(div, dict) else div}
 
         # QPS
         if dividends.get("qps"):
             div = dividends["qps"]
-            actual["qps"] = {"qps": div if not isinstance(div, dict) else div.get("amount", 0)}
+            actual["qps"] = {"qps": div.get("amount", 0) if isinstance(div, dict) else div}
 
         return actual
 

@@ -36,12 +36,17 @@ logger = setup_logging("telegram")
 
 
 class TelegramNotificationService:
-    """Service for sending Telegram notifications."""
+    """Service for sending Telegram notifications with rate limiting."""
 
     def __init__(self):
         self.settings = get_settings()
         self.redis_client: aioredis.Redis = None
         self.pubsub = None
+
+        # Rate limiting (20 msg/sec for safety margin below Telegram's 30/sec limit)
+        self.message_queue: asyncio.Queue = asyncio.Queue()
+        self.rate_limit_delay = 1.0 / 20  # 20 messages per second
+        self.last_send_time = 0.0
 
         # Initialize Telegram bot
         bot_token = self.settings.api_keys.telegram_bot_token.get_secret_value()
@@ -360,10 +365,9 @@ class TelegramNotificationService:
             bet_results["exacta"] = is_exacta
             if is_exacta and race_result.dividends.get("exacta"):
                 div = race_result.dividends["exacta"]
-                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
-                if isinstance(div_val, str):
-                    div_val = float(div_val.replace("$", "").replace(",", ""))
-                payouts["exacta"] = exacta_bet["amount"] * div_val
+                # TabTouchParser guarantees float in dict["amount"]
+                div_val = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["exacta"] = exacta_bet["amount"] * float(div_val)
 
         # Quinella bet
         if structured_bet.get("quinella_bet"):
@@ -374,10 +378,8 @@ class TelegramNotificationService:
             bet_results["quinella"] = is_quinella
             if is_quinella and race_result.dividends.get("quinella"):
                 div = race_result.dividends["quinella"]
-                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
-                if isinstance(div_val, str):
-                    div_val = float(div_val.replace("$", "").replace(",", ""))
-                payouts["quinella"] = quinella_bet["amount"] * div_val
+                div_val = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["quinella"] = quinella_bet["amount"] * float(div_val)
 
         # Trifecta bet
         if structured_bet.get("trifecta_bet"):
@@ -391,10 +393,8 @@ class TelegramNotificationService:
             bet_results["trifecta"] = is_trifecta
             if is_trifecta and race_result.dividends.get("trifecta"):
                 div = race_result.dividends["trifecta"]
-                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
-                if isinstance(div_val, str):
-                    div_val = float(div_val.replace("$", "").replace(",", ""))
-                payouts["trifecta"] = trifecta_bet["amount"] * div_val
+                div_val = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["trifecta"] = trifecta_bet["amount"] * float(div_val)
 
         # First4 bet
         if structured_bet.get("first4_bet"):
@@ -405,10 +405,8 @@ class TelegramNotificationService:
             bet_results["first4"] = is_first4
             if is_first4 and race_result.dividends.get("first4"):
                 div = race_result.dividends["first4"]
-                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
-                if isinstance(div_val, str):
-                    div_val = float(div_val.replace("$", "").replace(",", ""))
-                payouts["first4"] = first4_bet["amount"] * div_val
+                div_val = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["first4"] = first4_bet["amount"] * float(div_val)
 
         # QPS bet
         if structured_bet.get("qps_bet"):
@@ -419,10 +417,8 @@ class TelegramNotificationService:
             bet_results["qps"] = is_qps
             if is_qps and race_result.dividends.get("qps"):
                 div = race_result.dividends["qps"]
-                div_val = div if not isinstance(div, dict) else div.get("amount", 0)
-                if isinstance(div_val, str):
-                    div_val = float(div_val.replace("$", "").replace(",", ""))
-                payouts["qps"] = qps_bet["amount"] * div_val
+                div_val = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["qps"] = qps_bet["amount"] * float(div_val)
 
         # Calculate total bet amount
         total_bet_amount = sum(
@@ -480,6 +476,49 @@ class TelegramNotificationService:
 
         return actual
 
+    async def _message_worker(self):
+        """Worker task for rate-limited message sending (20 msg/sec)."""
+        while True:
+            try:
+                # Get message from queue
+                message_data = await self.message_queue.get()
+
+                # Rate limiting: ensure min delay between messages
+                now = asyncio.get_event_loop().time()
+                time_since_last = now - self.last_send_time
+                if time_since_last < self.rate_limit_delay:
+                    await asyncio.sleep(self.rate_limit_delay - time_since_last)
+
+                # Send message
+                text = message_data["text"]
+                reply_to = message_data.get("reply_to_message_id")
+
+                try:
+                    message = await self.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=text,
+                        reply_to_message_id=reply_to
+                    )
+                    message_data["result"].set_result(message.message_id)
+                except Exception as e:
+                    # Check for "Too Many Requests" error (HTTP 429)
+                    if "Too Many Requests" in str(e) or "429" in str(e):
+                        logger.warning(f"Rate limited by Telegram, retrying after delay")
+                        # Exponential backoff: wait and re-queue
+                        await asyncio.sleep(2.0)
+                        await self.message_queue.put(message_data)
+                    else:
+                        logger.error(f"Failed to send message: {e}", exc_info=True)
+                        message_data["result"].set_result(None)
+
+                self.last_send_time = asyncio.get_event_loop().time()
+                self.message_queue.task_done()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in message worker: {e}", exc_info=True)
+
     async def start(self):
         """Start the Telegram service."""
         # Connect to Redis
@@ -498,9 +537,12 @@ class TelegramNotificationService:
             "results:evaluated"
         )
 
+        # Start message worker for rate limiting
+        asyncio.create_task(self._message_worker())
+
         logger.info(f"🚀 Telegram Notification Service v{get_version()} started")
         logger.info(f"Chat ID: {self.chat_id}")
-        logger.info("Listening for notifications and commands...")
+        logger.info("Listening for notifications and commands (rate-limited 20 msg/sec)...")
 
         # Verify bot connection
         try:
@@ -813,16 +855,27 @@ class TelegramNotificationService:
         return "\n".join(lines)
 
     async def send_message(self, text: str, reply_to_message_id: int = None) -> Optional[int]:
-        """Send a message to Telegram and return the message_id."""
+        """
+        Send a message to Telegram via rate-limited queue.
+        Returns the message_id or None if failed.
+        """
+        # Create a future to await result
+        result_future = asyncio.Future()
+
+        # Queue message for sending
+        message_data = {
+            "text": text,
+            "reply_to_message_id": reply_to_message_id,
+            "result": result_future
+        }
+        await self.message_queue.put(message_data)
+
+        # Wait for result from worker
         try:
-            message = await self.bot.send_message(
-                chat_id=self.chat_id,
-                text=text,
-                reply_to_message_id=reply_to_message_id
-            )
-            return message.message_id
-        except Exception as e:
-            logger.error(f"Failed to send Telegram message: {e}", exc_info=True)
+            message_id = await asyncio.wait_for(result_future, timeout=30.0)
+            return message_id
+        except asyncio.TimeoutError:
+            logger.error("Timeout waiting for message to send")
             return None
 
     async def shutdown(self):
