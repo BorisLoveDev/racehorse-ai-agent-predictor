@@ -197,6 +197,53 @@ The system uses DuckDuckGo for web research (no API key required):
 - All services are stateless; state lives in Redis and SQLite
 - Web search results are cached (5 min TTL) to avoid duplicate queries
 
+## ⚠️ MANDATORY: Verification After Code Changes
+
+**ALWAYS run verification tests after significant code changes (bug fixes, new features, refactoring):**
+
+```bash
+# 1. Rebuild base image
+docker build -f Dockerfile.base -t racehorse-base:latest .
+
+# 2. Restart services
+docker compose down && docker compose up -d
+
+# 3. Run verification script
+./verify_fixes.sh
+
+# 4. Monitor logs for errors
+docker compose logs -f | grep -i "error\|critical\|warning"
+
+# 5. Check service health
+docker compose ps
+docker stats --no-stream
+
+# 6. Verify database integrity
+sqlite3 races.db "SELECT COUNT(*) FROM predictions"
+sqlite3 races.db "SELECT COUNT(*) FROM predictions WHERE race_start_time IS NULL"
+
+# 7. Check Redis state
+docker compose exec redis redis-cli KEYS "*"
+docker compose exec redis redis-cli SMEMBERS monitor:analyzed_races
+```
+
+**Why this is critical:**
+- Prevents production bugs from silent failures
+- Validates data integrity (timezones, race times, dividends)
+- Confirms resource cleanup (browser leaks, Redis state)
+- Ensures services communicate correctly (Redis pub/sub)
+
+**When to verify:**
+- After bug fixes (ALWAYS)
+- After dependency updates
+- After configuration changes
+- Before deploying to production
+- After 24-hour soak test
+
+See `BUGFIX_SUMMARY.md` for detailed verification procedures.
+
+---
+
 ## Troubleshooting
 
 **Services not receiving messages:**
