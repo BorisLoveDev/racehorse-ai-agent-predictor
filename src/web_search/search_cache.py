@@ -3,6 +3,7 @@ In-memory search result cache with TTL support.
 Avoids duplicate searches for the same queries.
 """
 
+import asyncio
 import hashlib
 import time
 from dataclasses import dataclass, field
@@ -21,25 +22,26 @@ class SearchCache:
     """
     In-memory cache for search results with TTL.
 
-    Thread-safe for async usage (single-threaded event loop).
+    Thread-safe for concurrent async access (uses asyncio.Lock).
     """
 
     ttl_seconds: int = 300  # 5 minutes default
     max_entries: int = 1000
     _cache: Dict[str, CacheEntry] = field(default_factory=dict)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def _make_key(self, query: str, max_results: int) -> str:
         """Generate cache key from query and parameters."""
         key_str = f"{query.lower().strip()}:{max_results}"
         return hashlib.md5(key_str.encode()).hexdigest()
 
-    def get(
+    async def get(
         self,
         query: str,
         max_results: int
     ) -> Optional[List[Dict[str, str]]]:
         """
-        Get cached search results if available and not expired.
+        Get cached search results if available and not expired (thread-safe).
 
         Args:
             query: Search query
@@ -48,42 +50,44 @@ class SearchCache:
         Returns:
             Cached results or None if not found/expired
         """
-        key = self._make_key(query, max_results)
-        entry = self._cache.get(key)
+        async with self._lock:
+            key = self._make_key(query, max_results)
+            entry = self._cache.get(key)
 
-        if entry is None:
-            return None
+            if entry is None:
+                return None
 
-        if time.time() > entry.expires_at:
-            # Expired, remove and return None
-            del self._cache[key]
-            return None
+            if time.time() > entry.expires_at:
+                # Expired, remove and return None
+                del self._cache[key]
+                return None
 
-        return entry.value
+            return entry.value
 
-    def set(
+    async def set(
         self,
         query: str,
         max_results: int,
         results: List[Dict[str, str]]
     ) -> None:
         """
-        Cache search results.
+        Cache search results (thread-safe).
 
         Args:
             query: Search query
             max_results: Max results parameter
             results: Search results to cache
         """
-        # Evict old entries if at capacity
-        if len(self._cache) >= self.max_entries:
-            self._evict_expired()
+        async with self._lock:
+            # Evict old entries if at capacity
+            if len(self._cache) >= self.max_entries:
+                self._evict_expired()
 
-        key = self._make_key(query, max_results)
-        self._cache[key] = CacheEntry(
-            value=results,
-            expires_at=time.time() + self.ttl_seconds
-        )
+            key = self._make_key(query, max_results)
+            self._cache[key] = CacheEntry(
+                value=results,
+                expires_at=time.time() + self.ttl_seconds
+            )
 
     def _evict_expired(self) -> None:
         """Remove expired entries from cache."""
@@ -106,9 +110,10 @@ class SearchCache:
             for key, _ in sorted_entries[:entries_to_remove]:
                 del self._cache[key]
 
-    def clear(self) -> None:
-        """Clear all cached entries."""
-        self._cache.clear()
+    async def clear(self) -> None:
+        """Clear all cached entries (thread-safe)."""
+        async with self._lock:
+            self._cache.clear()
 
     @property
     def size(self) -> int:

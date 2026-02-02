@@ -142,14 +142,14 @@ class WebResearcher:
     ) -> List[Dict[str, str]]:
         """Search with optional caching."""
         if self.cache:
-            cached = self.cache.get(query, max_results)
+            cached = await self.cache.get(query, max_results)
             if cached is not None:
                 return cached
 
         results = await self.search_engine.search(query, max_results)
 
         if self.cache and results:
-            self.cache.set(query, max_results, results)
+            await self.cache.set(query, max_results, results)
 
         return results
 

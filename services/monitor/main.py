@@ -30,7 +30,7 @@ class RaceMonitorService:
         self.settings = get_settings()
         self.redis_client: aioredis.Redis = None
         self.parser = TabTouchParser(headless=True)
-        self.monitored_races: set[str] = set()  # Track races we've already triggered
+        # monitored_races now persisted in Redis (no in-memory set)
 
     async def start(self):
         """Start the monitoring service."""
@@ -49,6 +49,17 @@ class RaceMonitorService:
 
         # Start monitoring loop
         await self.monitor_loop()
+
+    async def _is_monitored(self, race_url: str) -> bool:
+        """Check if race was already analyzed (Redis-backed)."""
+        key = "monitor:analyzed_races"
+        return await self.redis_client.sismember(key, race_url)
+
+    async def _add_to_monitored(self, race_url: str):
+        """Mark race as analyzed (Redis-backed with 24h TTL)."""
+        key = "monitor:analyzed_races"
+        await self.redis_client.sadd(key, race_url)
+        await self.redis_client.expire(key, 86400)  # 24h TTL
 
     async def monitor_loop(self):
         """Main monitoring loop."""
@@ -83,8 +94,8 @@ class RaceMonitorService:
         """Process a single race."""
         race_url = race.url
 
-        # Skip if already triggered
-        if race_url in self.monitored_races:
+        # Skip if already triggered (Redis-backed check)
+        if await self._is_monitored(race_url):
             return
 
         # Check if race is within trigger window
@@ -97,10 +108,10 @@ class RaceMonitorService:
         now = datetime.now(race.time_parsed.tzinfo)
         time_until_race = (race.time_parsed - now).total_seconds() / 60  # minutes
 
-        # Trigger window: from configured minutes before to 1 minute after race start
-        # This allows catching races even if slightly delayed or already started
+        # Trigger window: from configured minutes before to 30 seconds before race start
+        # Prevents useless predictions after race has started
         trigger_window_start = self.settings.timing.minutes_before_race + 2  # add buffer
-        trigger_window_end = -1   # up to 1 minute after race start is OK
+        trigger_window_end = 0.5   # 30 seconds before (not after!)
 
         if trigger_window_end <= time_until_race <= trigger_window_start:
             logger.info(f"Triggering analysis | race={race.location} R{race.race_number} | time_until={time_until_race:.1f}min | url={race_url}")
@@ -110,21 +121,24 @@ class RaceMonitorService:
                 race_details = await self.parser.get_race_details(race_url)
 
                 if race_details and race_details.runners:
-                    # Format for AI analysis
-                    race_data = self._format_race_data(race_details)
+                    # Determine race start time (prefer details, fallback to list time)
+                    race_start_time = race_details.start_time_parsed or race_start_time_fallback
+
+                    if not race_start_time:
+                        logger.error(f"Cannot determine race start time | race={race.location} R{race.race_number}")
+                        return  # Skip this race
+
+                    # Format for AI analysis (includes start_time_iso)
+                    race_data = self._format_race_data(race_details, race_start_time)
 
                     # Publish to Redis for orchestrator
                     await self.publish_race_for_analysis(race_url, race_data)
 
                     # Schedule result check
-                    start_time_for_check = race_details.start_time_parsed or race_start_time_fallback
-                    if start_time_for_check:
-                        await self.schedule_result_check(race_url, start_time_for_check)
-                    else:
-                        logger.warning(f"No start time available, cannot schedule result check | race={race.location} R{race.race_number}")
+                    await self.schedule_result_check(race_url, race_start_time)
 
-                    # Mark as monitored
-                    self.monitored_races.add(race_url)
+                    # Mark as monitored (Redis-backed)
+                    await self._add_to_monitored(race_url)
 
                     logger.info(f"Published to orchestrator | race={race.location} R{race.race_number} | runners={len(race_details.runners)}")
                 else:
@@ -134,12 +148,12 @@ class RaceMonitorService:
                 logger.error(f"Error processing race | race={race.location} R{race.race_number} | error={e}", exc_info=True)
 
         elif time_until_race < trigger_window_end:
-            # Race started more than 1 minute ago - too late
-            if race_url not in self.monitored_races:
-                logger.warning(f"Race already started | race={race.location} R{race.race_number} | time_since={abs(time_until_race):.1f}min")
-                self.monitored_races.add(race_url)  # Mark to avoid spam
+            # Race too close to start time (less than 30 seconds) - too late
+            if not await self._is_monitored(race_url):
+                logger.warning(f"Race too close to start | race={race.location} R{race.race_number} | time_until={time_until_race:.1f}min")
+                await self._add_to_monitored(race_url)  # Mark to avoid spam
 
-    def _format_race_data(self, race_details) -> dict:
+    def _format_race_data(self, race_details, race_start_time) -> dict:
         """Format race details for AI analysis."""
         return {
             "race_info": {
@@ -151,7 +165,7 @@ class RaceMonitorService:
                 "track_condition": race_details.track_condition,
                 "race_type": race_details.race_type,
                 "start_time": race_details.start_time,
-                "start_time_iso": race_details.start_time_parsed.isoformat() if race_details.start_time_parsed else None,
+                "start_time_iso": race_start_time.isoformat(),  # Always present (fallback guaranteed)
                 "url": race_details.url
             },
             "runners": [

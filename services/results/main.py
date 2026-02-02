@@ -23,17 +23,17 @@ from src.logging_config import setup_logging
 logger = setup_logging("results")
 
 
-def to_utc_naive(dt: datetime) -> datetime:
+def ensure_utc_aware(dt: datetime) -> datetime:
     """
-    Convert any datetime to UTC naive datetime for comparison.
+    Convert any datetime to UTC-aware datetime.
+    If dt is naive, assume UTC (with warning).
 
-    This ensures consistent comparison regardless of timezone-awareness.
+    This prevents dangerous naive datetime assumptions.
     """
     if dt.tzinfo is None:
-        # Assume naive datetime is already UTC
-        return dt
-    # Convert to UTC and strip timezone
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        logger.warning(f"Received naive datetime, assuming UTC: {dt}")
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 class ResultsEvaluationService:
@@ -105,7 +105,7 @@ class ResultsEvaluationService:
             ''')
 
             count = 0
-            now_utc = datetime.utcnow()
+            now_utc = datetime.now(timezone.utc)
 
             for row in cursor.fetchall():
                 race_url, race_start_str, created_at_str = row
@@ -118,8 +118,8 @@ class ResultsEvaluationService:
                             minutes=self.settings.timing.result_wait_minutes
                         )
 
-                        # Convert to UTC naive for comparison
-                        check_time_utc = to_utc_naive(check_time)
+                        # Ensure UTC-aware for comparison
+                        check_time_utc = ensure_utc_aware(check_time)
 
                         # Only schedule if check time hasn't passed by more than 24 hours
                         if now_utc - check_time_utc < timedelta(hours=24):
@@ -133,14 +133,14 @@ class ResultsEvaluationService:
                         # race_start_time is empty - use created_at as fallback
                         if created_at_str:
                             created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
-                            created_at_utc = to_utc_naive(created_at)
+                            created_at_utc = ensure_utc_aware(created_at)
 
                             age_minutes = (now_utc - created_at_utc).total_seconds() / 60
 
                             # If old enough (race likely finished), schedule immediate check
                             if age_minutes >= self.settings.timing.result_wait_minutes:
                                 self.scheduled_checks[race_url] = {
-                                    "check_time": datetime.utcnow(),
+                                    "check_time": datetime.now(timezone.utc),
                                     "retry_count": 0
                                 }
                                 count += 1
@@ -181,15 +181,15 @@ class ResultsEvaluationService:
         """Periodically check for races that need results evaluation."""
         while True:
             try:
-                now_utc = datetime.utcnow()
+                now_utc = datetime.now(timezone.utc)
                 races_to_check = []
 
                 # Find races ready for checking
                 for race_url, check_info in list(self.scheduled_checks.items()):
                     check_time = check_info["check_time"]
 
-                    # Convert check_time to UTC naive for comparison
-                    check_time_utc = to_utc_naive(check_time)
+                    # Ensure UTC-aware for comparison
+                    check_time_utc = ensure_utc_aware(check_time)
 
                     if now_utc >= check_time_utc:
                         races_to_check.append(race_url)
@@ -252,7 +252,7 @@ class ResultsEvaluationService:
             del self.scheduled_checks[race_url]
         else:
             # Schedule next retry
-            next_check = datetime.utcnow() + timedelta(
+            next_check = datetime.now(timezone.utc) + timedelta(
                 seconds=self.settings.timing.result_retry_interval
             )
             check_info["check_time"] = next_check
@@ -463,7 +463,7 @@ class ResultsEvaluationService:
                 {"agent_name": p["agent_name"], "prediction_id": p["prediction_id"]}
                 for p in predictions
             ],
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         await self.redis_client.publish(

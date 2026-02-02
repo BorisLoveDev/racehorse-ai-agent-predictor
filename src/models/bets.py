@@ -133,14 +133,15 @@ class First4Bet(BaseModel):
 
 class QPSBet(BaseModel):
     """
-    Quinella Place Special - select 2-4 horses, any 2 to finish in top 3.
+    Quinella Place Special - select 3-4 horses, any 2 to finish in top 3.
+    Note: 2-horse QPS is identical to Quinella, so we require 3-4 horses.
     """
 
     horses: list[int] = Field(
         ...,
-        min_length=2,
+        min_length=3,
         max_length=4,
-        description="2-4 horses, any 2 must finish in top 3"
+        description="3-4 horses, any 2 must finish in top 3"
     )
     amount: float = Field(..., gt=0, description="Bet amount")
     reasoning: str = Field(default="", description="Why this bet")
@@ -148,8 +149,8 @@ class QPSBet(BaseModel):
     @field_validator("horses")
     @classmethod
     def validate_horses(cls, v: list[int]) -> list[int]:
-        if len(v) < 2 or len(v) > 4:
-            raise ValueError("QPS requires 2-4 horses")
+        if len(v) < 3 or len(v) > 4:
+            raise ValueError("QPS requires 3-4 horses (2-horse QPS is same as Quinella)")
         if len(set(v)) != len(v):
             raise ValueError("All horses must be different")
         for horse in v:

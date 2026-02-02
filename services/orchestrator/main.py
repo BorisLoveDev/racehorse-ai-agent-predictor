@@ -255,17 +255,17 @@ class AgentOrchestratorService:
         # Extract odds snapshot
         odds_snapshot = self._build_odds_snapshot(race_data, structured_bet)
 
-        # Get race start time - prefer start_time_iso, fallback to current time
+        # Get race start time - REQUIRED (monitor must provide this)
         # This is used by Results service to schedule result checks
         race_start_time = race_info.get("start_time_iso")
         if not race_start_time:
-            # BUG FIX: Previously used datetime.utcnow() which could cause
-            # immediate result checks. Now we log a warning but still use
-            # current time as last resort (race is imminent anyway).
-            # The Monitor service should always provide start_time_iso from
-            # race.time_parsed fallback, so this branch should rarely execute.
-            race_start_time = datetime.utcnow().isoformat() + "Z"
-            logger.warning(f"Using fallback race_start_time | race={race_info.get('location')} R{race_info.get('race_number')} | fallback_time={race_start_time}")
+            # CRITICAL: Monitor should ALWAYS provide start_time_iso (with fallback)
+            # If missing, this is a bug in monitor service - skip prediction
+            logger.error(
+                f"CRITICAL: Missing race_start_time_iso | "
+                f"race={race_info.get('location')} R{race_info.get('race_number')}"
+            )
+            return None  # Skip prediction (better than wrong timing)
 
         prediction_id = self.prediction_repo.save_prediction(
             agent_name=agent_name,

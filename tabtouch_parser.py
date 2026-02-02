@@ -247,7 +247,12 @@ class TabTouchParser:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+        """Cleanup browser resources (exception-safe)."""
+        try:
+            await self.close()
+        except Exception as e:
+            logger.error(f"Error during browser cleanup: {e}")
+        return False  # Don't suppress exceptions
 
     async def start(self):
         """Запуск браузера"""
@@ -278,11 +283,36 @@ class TabTouchParser:
         self.page.set_default_timeout(60000)  # 60 seconds default timeout
 
     async def close(self):
-        """Закрытие браузера"""
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
+        """Close browser (idempotent, exception-safe)."""
+        # Close in reverse order: page → context → browser → playwright
+
+        try:
+            if self.page:
+                await self.page.close()
+                self.page = None
+        except Exception as e:
+            logger.error(f"Error closing page: {e}")
+
+        try:
+            if self.context:
+                await self.context.close()
+                self.context = None
+        except Exception as e:
+            logger.error(f"Error closing context: {e}")
+
+        try:
+            if self.browser:
+                await self.browser.close()
+                self.browser = None
+        except Exception as e:
+            logger.error(f"Error closing browser: {e}")
+
+        try:
+            if hasattr(self, 'playwright') and self.playwright:
+                await self.playwright.stop()
+                self.playwright = None
+        except Exception as e:
+            logger.error(f"Error stopping playwright: {e}")
 
     async def _wait_for_content(self, timeout: int = 10000):
         """Ожидание загрузки контента"""
