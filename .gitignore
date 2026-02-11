@@ -61,3 +61,6 @@ race_data/
 .playwright/
 playwright-report/
 test-results/
+
+# Auto Claude data directory
+.auto-claude/
