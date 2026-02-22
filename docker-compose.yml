@@ -3,7 +3,8 @@ services:
   searxng:
     image: searxng/searxng:latest
     container_name: racehorse-searxng
-    # No external port needed - only accessed internally via Docker network
+    ports:
+      - "8888:8080"  # External access for clawdbot (restricted by iptables to 95.142.41.188)
     dns:
       - 8.8.8.8
       - 1.1.1.1
