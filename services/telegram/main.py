@@ -9,7 +9,7 @@ import asyncio
 import json
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -33,7 +33,7 @@ from src.database.repositories import (
     StatisticsRepository
 )
 from services.telegram.charts import generate_pl_chart
-from services.telegram.callbacks import MenuCB, RaceCB, StatsCB, ControlCB
+from services.telegram.callbacks import MenuCB, RaceCB, StatsCB, ControlCB, DigestCB
 from services.telegram.keyboards import (
     main_menu_kb, race_list_kb, race_detail_kb, stats_period_kb,
     race_select_kb, RACES_PER_PAGE
@@ -207,7 +207,6 @@ class TelegramNotificationService:
             )
 
             # Schedule result check
-            from datetime import timedelta
             check_time = race_start_time + timedelta(
                 minutes=self.settings.timing.result_wait_minutes
             )
@@ -555,16 +554,16 @@ class TelegramNotificationService:
             try:
                 stats_text, chart_buf = await self._build_stats_response("all")
                 kb = stats_period_kb("all")
+                # Always delete+send: avoids text↔photo edit incompatibility
                 if chart_buf:
-                    # Can't edit message to photo from text — send new message
                     photo = BufferedInputFile(chart_buf.read(), filename="pl_chart.png")
                     await query.message.answer_photo(photo=photo, caption=stats_text, reply_markup=kb)
-                    await query.message.delete()
                 else:
-                    await query.message.edit_text(stats_text, reply_markup=kb)
+                    await query.message.answer(stats_text, reply_markup=kb)
+                await query.message.delete()
             except Exception as e:
                 logger.error(f"Error in stats callback: {e}", exc_info=True)
-                await query.message.edit_text(f"Error: {e}")
+                await query.message.answer(f"Error: {e}")
 
         @self.router.callback_query(MenuCB.filter(F.action == "back"))
         async def cb_menu_back(query: CallbackQuery):
@@ -615,25 +614,11 @@ class TelegramNotificationService:
 
         @self.router.callback_query(RaceCB.filter(F.action == "analyze"))
         async def cb_race_analyze(query: CallbackQuery, callback_data: RaceCB):
+            """Direct analysis trigger from race browser (normal mode)."""
             await query.answer("Triggering analysis...")
-            races = self._race_cache or self._digest_races
-            if not races:
+            if not self._race_cache:
                 await query.message.edit_text("No races cached. Please browse races first.")
                 return
-
-            # Handle digest-mode races (dicts) vs normal cache (NextRace objects)
-            if self._digest_races and not self._race_cache:
-                # Digest mode: add URL to manual_races set so monitor picks it up
-                if callback_data.idx < len(self._digest_races):
-                    race_info = self._digest_races[callback_data.idx]
-                    url = race_info["url"]
-                    await self.redis_client.sadd("bot:manual_races", url)
-                    label = f"{race_info['location']} R{race_info['race_number']}"
-                    await query.message.edit_text(
-                        f"✅ <b>{label}</b> selected for analysis.\n\n"
-                        "The monitor will trigger analysis during the next poll cycle (within 60s)."
-                    )
-                    return
 
             label = await self._trigger_race_analysis(callback_data.idx)
             if label:
@@ -647,6 +632,23 @@ class TelegramNotificationService:
                     "Race may have already started or details unavailable."
                 )
 
+        @self.router.callback_query(DigestCB.filter())
+        async def cb_digest_select(query: CallbackQuery, callback_data: DigestCB):
+            """Manual-mode digest: add selected race to bot:manual_races for monitor."""
+            await query.answer("Selecting race...")
+            if callback_data.idx >= len(self._digest_races):
+                await query.message.edit_text("Race no longer available in digest.")
+                return
+
+            race_info = self._digest_races[callback_data.idx]
+            url = race_info["url"]
+            await self.redis_client.sadd("bot:manual_races", url)
+            label = f"{race_info['location']} R{race_info['race_number']}"
+            await query.message.edit_text(
+                f"✅ <b>{label}</b> selected for analysis.\n\n"
+                "The monitor will trigger analysis during the next poll cycle (within 60s)."
+            )
+
         # ── Stats period callbacks ───────────────────────────────────
 
         @self.router.callback_query(StatsCB.filter())
@@ -655,15 +657,16 @@ class TelegramNotificationService:
             try:
                 stats_text, chart_buf = await self._build_stats_response(callback_data.period)
                 kb = stats_period_kb(callback_data.period)
+                # Always delete+send: avoids text↔photo edit incompatibility
                 if chart_buf:
                     photo = BufferedInputFile(chart_buf.read(), filename="pl_chart.png")
                     await query.message.answer_photo(photo=photo, caption=stats_text, reply_markup=kb)
-                    await query.message.delete()
                 else:
-                    await query.message.edit_text(stats_text, reply_markup=kb)
+                    await query.message.answer(stats_text, reply_markup=kb)
+                await query.message.delete()
             except Exception as e:
                 logger.error(f"Error in stats period callback: {e}", exc_info=True)
-                await query.message.edit_text(f"Error: {e}")
+                await query.message.answer(f"Error: {e}")
 
         # ── Control callbacks ────────────────────────────────────────
 

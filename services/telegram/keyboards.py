@@ -6,7 +6,7 @@ from typing import Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from services.telegram.callbacks import MenuCB, RaceCB, StatsCB, ControlCB
+from services.telegram.callbacks import MenuCB, RaceCB, StatsCB, ControlCB, DigestCB
 
 RACES_PER_PAGE = 5
 
@@ -131,13 +131,15 @@ def back_kb(target: str = "races", pg: int = 0) -> InlineKeyboardMarkup:
 
 
 def race_select_kb(races: list) -> InlineKeyboardMarkup:
-    """Keyboard for selecting races from a digest message (manual mode)."""
+    """Keyboard for selecting races from a digest message (manual mode).
+    Uses DigestCB (prefix 'd') to avoid ambiguity with RaceCB analyze action.
+    """
     builder = InlineKeyboardBuilder()
     for i, race in enumerate(races[:10]):
         label = f"{race['location']} R{race['race_number']} ({race.get('time', '?')})"
         builder.button(
             text=label,
-            callback_data=RaceCB(action="analyze", idx=i, pg=0)
+            callback_data=DigestCB(idx=i)
         )
     builder.adjust(1)
     return builder.as_markup()

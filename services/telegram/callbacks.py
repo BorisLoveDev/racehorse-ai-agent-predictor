@@ -24,6 +24,11 @@ class StatsCB(CallbackData, prefix="s"):
     period: str  # "all", "today", "3d", "week"
 
 
+class DigestCB(CallbackData, prefix="d"):
+    """Manual-mode digest race selection. Example: 'd:3' = 3 bytes."""
+    idx: int = 0  # index in digest race list
+
+
 class ControlCB(CallbackData, prefix="c"):
     """Bot control actions. Example: 'c:toggle' = 8 bytes."""
     action: str  # "toggle", "mode", "back"
