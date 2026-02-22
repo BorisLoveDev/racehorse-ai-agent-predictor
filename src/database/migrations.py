@@ -196,6 +196,12 @@ def run_migrations(db_path: str = "races.db") -> None:
             ON prediction_outcomes(prediction_id)
         """)
 
+        # Prevent duplicate outcome evaluation from inflating stats
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_po_unique_pred
+            ON prediction_outcomes(prediction_id)
+        """)
+
         # Add new columns for odds and dividends (Stage 1)
         add_odds_columns(cursor)
 

@@ -66,15 +66,60 @@ class RaceMonitorService:
         async with self.parser:
             while True:
                 try:
-                    await self.check_races()
+                    next_races = await self.check_races()
+                    await self._maybe_publish_digest(next_races)
                 except Exception as e:
                     logger.error(f"Error in monitor loop: {e}", exc_info=True)
 
                 # Wait before next check
                 await asyncio.sleep(self.settings.timing.monitor_poll_interval)
 
-    async def check_races(self):
-        """Check upcoming races and trigger analysis if needed."""
+    async def _maybe_publish_digest(self, next_races: list):
+        """In manual mode, publish a digest of upcoming races (throttled to 1 per 10 min)."""
+        if not next_races:
+            return
+
+        mode = await self.redis_client.get("bot:mode")
+        if mode != "manual":
+            return
+
+        last_digest = await self.redis_client.get("bot:last_digest_time")
+        if last_digest:
+            return  # TTL-based throttle still active
+
+        # Find races starting within the next 90 minutes
+        now = datetime.now(next_races[0].time_parsed.tzinfo) if next_races[0].time_parsed else datetime.utcnow()
+        upcoming_soon = [
+            r for r in next_races
+            if r.time_parsed and 0 < (r.time_parsed - now).total_seconds() / 60 <= 90
+        ]
+
+        if not upcoming_soon:
+            return
+
+        await self.redis_client.publish("races:digest", json.dumps({
+            "races": [
+                {
+                    "location": r.location,
+                    "race_number": r.race_number,
+                    "time": r.time_client,
+                    "url": r.url,
+                }
+                for r in upcoming_soon
+            ]
+        }))
+        # 10-minute throttle via Redis TTL
+        await self.redis_client.set("bot:last_digest_time", datetime.utcnow().isoformat(), ex=600)
+        logger.info(f"Published manual-mode digest | races={len(upcoming_soon)}")
+
+    async def check_races(self) -> list:
+        """Check upcoming races and trigger analysis if needed. Returns race list."""
+        # Respect bot:enabled flag — skip entirely when paused
+        enabled = await self.redis_client.get("bot:enabled")
+        if enabled == "0":
+            logger.debug("Bot is paused (bot:enabled=0), skipping poll")
+            return []
+
         logger.info("Checking horse races...")
 
         # Get next races - only horse racing (not greyhounds or harness)
@@ -82,13 +127,15 @@ class RaceMonitorService:
 
         if not next_races:
             logger.info("No upcoming horse races found")
-            return
+            return []
 
         logger.info(f"Found {len(next_races)} upcoming horse races")
 
         # Check each race
         for race in next_races:
             await self.process_race(race)
+
+        return next_races
 
     async def process_race(self, race):
         """Process a single race."""
@@ -114,6 +161,15 @@ class RaceMonitorService:
         trigger_window_end = 0.5   # 30 seconds before (not after!)
 
         if trigger_window_end <= time_until_race <= trigger_window_start:
+            # In manual mode, only analyze races explicitly selected via Telegram
+            mode = await self.redis_client.get("bot:mode")
+            if mode == "manual":
+                is_selected = await self.redis_client.sismember("bot:manual_races", race_url)
+                if not is_selected:
+                    return  # Digest will let the user select
+                # Remove from selection set once consumed
+                await self.redis_client.srem("bot:manual_races", race_url)
+
             logger.info(f"Triggering analysis | race={race.location} R{race.race_number} | time_until={time_until_race:.1f}min | url={race_url}")
 
             # Get full race details
