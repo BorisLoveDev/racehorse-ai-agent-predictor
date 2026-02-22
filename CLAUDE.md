@@ -49,8 +49,10 @@ The system runs as 5 Docker containers communicating via Redis pub/sub:
    - Saves outcomes to `prediction_outcomes` table
 
 4. **Telegram** (`services/telegram/main.py`)
-   - Listens on `predictions:new` and `results:evaluated`
-   - Sends formatted notifications to configured chat
+   - Listens on `predictions:new`, `results:evaluated`, `races:digest`
+   - Interactive inline keyboards: race browser, bot control, stats period selector
+   - `callbacks.py` — CallbackData classes (all ≤ 64 bytes per Telegram limit)
+   - `keyboards.py` — keyboard builder functions
 
 5. **Redis** - Message broker for pub/sub communication
 
@@ -156,6 +158,7 @@ SQLite database `races.db` contains:
 | `race:schedule_result_check` | Monitor | Results | race_url, check_time |
 | `predictions:new` | Orchestrator | Telegram | race_url, predictions |
 | `results:evaluated` | Results | Telegram | race_url, outcomes |
+| `races:digest` | Monitor | Telegram | races list (manual mode only, 10-min throttle) |
 
 ## Timing Configuration
 
@@ -187,6 +190,28 @@ The system uses DuckDuckGo for web research (no API key required):
   7. JudgeAgent verifies completeness
 - Slower but more thorough
 - Enable with: `RACEHORSE_WEB_SEARCH__MODE=deep`
+
+## Bot Control (Redis Keys)
+
+| Key | Values | Default | Effect |
+|-----|--------|---------|--------|
+| `bot:enabled` | `"1"` / `"0"` | `"1"` | Pause/resume — `"0"` skips all scraping |
+| `bot:mode` | `"auto"` / `"manual"` | `"auto"` | Auto-analyzes all; manual requires user selection |
+| `bot:manual_races` | Redis set of URLs | empty | URLs selected via Telegram for analysis |
+| `bot:last_digest_time` | ISO timestamp | unset | TTL key throttling digest to 1 per 10 min |
+
+Set via Telegram `/menu` inline buttons or directly:
+```bash
+docker compose exec redis redis-cli SET bot:enabled 0
+docker compose exec redis redis-cli SET bot:mode manual
+```
+
+## aiogram Notes (Telegram service)
+
+- `CallbackData` import: `from aiogram.filters.callback_data import CallbackData`
+- `InlineKeyboardBuilder` import: `from aiogram.utils.keyboard import InlineKeyboardBuilder`
+- Telegram enforces **64-byte max** on callback data — use short prefixes (`m:`, `r:`, `s:`, `c:`)
+- Syntax-check without starting services: `python -c "import ast; ast.parse(open('file.py').read())"`
 
 ## Key Implementation Notes
 
