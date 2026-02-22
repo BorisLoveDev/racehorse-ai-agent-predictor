@@ -111,6 +111,37 @@ docker compose logs -f
 docker compose down
 ```
 
+### Production Deployment (Coolify on Meridian)
+
+The system runs in production on **Meridian server** (46.30.43.46, 2 vCPU, 4GB RAM, Ubuntu 24.04) via **Coolify** self-hosted PaaS.
+
+**Coolify identifiers:**
+- App UUID: `y8k408og84488csc4gss4gws`
+- Project UUID: `kw84s04sos8084840oks84og`
+- Build pack: `dockercompose` (reads `docker-compose.yml` from repo)
+- Git: `BorisLoveDev/racehorse-ai-agent-predictor`, branch `main`
+- 6 containers: redis, searxng, monitor, orchestrator, results, telegram
+- 49 env vars configured in Coolify UI
+
+**Deploy via Coolify API (preferred):**
+```bash
+# Trigger deploy of latest main branch
+# Use Coolify MCP tool: mcp__coolify__deploy(tag_or_uuid="y8k408og84488csc4gss4gws")
+
+# Check deployment status
+# Use: mcp__coolify__deployment(action="get", uuid="<deployment_uuid>")
+
+# Diagnose app health
+# Use: mcp__coolify__diagnose_app(query="racehorse")
+```
+
+**Deploy via SSH (fallback):**
+```bash
+ssh meridian "cd /data/coolify && docker compose up -d"
+```
+
+**OOM warning:** 4GB RAM server. Docker `--no-cache` builds with Playwright/Chromium can OOM-kill the server. Avoid force-rebuild when possible. If server becomes unresponsive during build, reboot via Hetzner panel.
+
 ### Development Scripts
 
 ```bash
