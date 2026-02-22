@@ -140,7 +140,7 @@ The system runs in production on **Meridian server** (46.30.43.46, 2 vCPU, 4GB R
 ssh meridian "cd /data/coolify && docker compose up -d"
 ```
 
-**OOM warning:** 4GB RAM server. Docker `--no-cache` builds with Playwright/Chromium can OOM-kill the server. Avoid force-rebuild when possible. If server becomes unresponsive during build, reboot via Hetzner panel.
+**OOM warning:** 4GB RAM server. Docker `--no-cache` builds with Playwright/Chromium can OOM-kill the server. Avoid force-rebuild when possible. If server becomes unresponsive during build, reboot via Hetzner panel. Typical build time: **8-10 minutes**.
 
 ### Development Scripts
 
@@ -179,6 +179,8 @@ SQLite database `races.db` contains:
 - **agents** - AI agent configurations (gemini, grok)
 - **predictions** - Generated betting predictions with structured bets
 - **prediction_outcomes** - Evaluated results (win/loss, payouts, P/L)
+  - Per-bet columns: `win_result`, `place_result`, `exacta_result`, `quinella_result`, `trifecta_result`, `first4_result`, `qps_result` (1/0/NULL)
+  - Per-bet payouts: `win_payout`, `place_payout`, `exacta_payout`, `quinella_payout`, `trifecta_payout`, `first4_payout`, `qps_payout`
 - **agent_statistics** - Aggregate performance metrics
 
 ## Redis Pub/Sub Channels
@@ -203,24 +205,33 @@ Configured in `src/config/settings.py`:
 
 ## Web Search Modes
 
-The system uses DuckDuckGo for web research (no API key required):
+SearXNG is the primary search engine (container `racehorse-searxng`, port 8080 internal).
+Fallback: DuckDuckGo (no API key required).
 
-### Basic Mode (default)
-- Single-pass search returning snippets
-- Fast, low latency
-- Good for quick context gathering
+### Modes (`WebResearcher` in `src/web_search/research_modes.py`)
 
-### Deep Mode
-- Multi-agent research loop:
-  1. ComplexityAgent determines if query needs decomposition
-  2. DecomposeAgent breaks complex queries into sub-queries
-  3. Parallel search across all queries
-  4. SiteVisitor extracts content from top pages
-  5. ExtractionAgent pulls relevant information
-  6. SummarizationAgent synthesizes results
-  7. JudgeAgent verifies completeness
-- Slower but more thorough
-- Enable with: `RACEHORSE_WEB_SEARCH__MODE=deep`
+| Mode | Cost | Speed | Description |
+|------|------|-------|-------------|
+| `off` | $0 | — | No search |
+| `raw` | $0 | ~1s | Search → return snippets (no LLM) |
+| `lite` | ~$0.01 | ~10-15s | Search → Relevance → visit sites → Extraction → Summary |
+| `deep` | ~$0.05-0.10 | ~30-60s | Complexity → Decompose → multi-query → visit → Judge loop |
+
+### External Access (clawdbot)
+
+SearXNG port `8888` is exposed externally for **clawdbot** (AI agent on separate server):
+- **Endpoint**: `http://46.30.43.46:8888/search?q=QUERY&format=json`
+- **Healthcheck**: `http://46.30.43.46:8888/healthz`
+- **Access restricted** by iptables DOCKER-USER chain to `95.142.41.188` only
+- **iptables persistence**: systemd `iptables-restore.service` loads `/etc/iptables/rules.v4` on boot
+- Clawdbot gets **raw mode** only (SearXNG JSON API); lite/deep require internal LLM agents
+
+To update allowed IPs:
+```bash
+ssh meridian
+iptables -I DOCKER-USER -p tcp --dport 8080 -s <NEW_IP> -j ACCEPT
+iptables-save > /etc/iptables/rules.v4
+```
 
 ## Bot Control (Redis Keys)
 
@@ -243,6 +254,15 @@ docker compose exec redis redis-cli SET bot:mode manual
 - `InlineKeyboardBuilder` import: `from aiogram.utils.keyboard import InlineKeyboardBuilder`
 - Telegram enforces **64-byte max** on callback data — use short prefixes (`m:`, `r:`, `s:`, `c:`)
 - Syntax-check without starting services: `python -c "import ast; ast.parse(open('file.py').read())"`
+
+## Dividend Data Structures
+
+TabTouch `_parse_dividends()` returns different types per bet:
+- `dividends["win"]` → `float` (e.g., `3.60`)
+- `dividends["place"]` → `list[float]` ordered by finishing position (e.g., `[1.65, 1.90, 2.05]`)
+- `dividends["exacta"]` etc. → `{"combination": "1-3", "amount": 18.50}` (dict, NOT float)
+
+When calculating payouts from exotic dividends, always extract `.get("amount", 0)` — never multiply dict directly.
 
 ## Key Implementation Notes
 
