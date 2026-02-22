@@ -41,7 +41,8 @@ services:
   monitor:
     build:
       context: .
-      dockerfile: services/monitor/Dockerfile
+      dockerfile: Dockerfile
+      target: monitor
     container_name: racehorse-monitor
     dns:
       - 8.8.8.8
@@ -66,7 +67,8 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: services/orchestrator/Dockerfile
+      dockerfile: Dockerfile
+      target: orchestrator
     container_name: racehorse-orchestrator
     dns:
       - 8.8.8.8
@@ -93,7 +95,8 @@ services:
   results:
     build:
       context: .
-      dockerfile: services/results/Dockerfile
+      dockerfile: Dockerfile
+      target: results
     container_name: racehorse-results
     dns:
       - 8.8.8.8
@@ -117,7 +120,8 @@ services:
   telegram:
     build:
       context: .
-      dockerfile: services/telegram/Dockerfile
+      dockerfile: Dockerfile
+      target: telegram
     container_name: racehorse-telegram
     dns:
       - 8.8.8.8
