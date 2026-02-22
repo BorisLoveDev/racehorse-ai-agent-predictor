@@ -335,8 +335,35 @@ Focus on:
 3. **Jockey/Trainer**: Statistics and recent form
 4. **Barrier Position**: Impact on race strategy
 5. **Weight**: Handicap considerations
-6. **Odds Analysis**: Value identification
+6. **Odds Analysis**: Value identification via overlay detection
 7. **Race Dynamics**: Likely pace, positioning
+
+FORM CODE INTERPRETATION:
+Form codes like "24156" read left-to-right as most recent to oldest finishes.
+Example: "24156" means last 5 starts: 2nd, 4th, 1st, 5th, 6th (most recent first).
+- Look for improving patterns (e.g., "54321" = steadily improving)
+- Declining patterns (e.g., "12345" = getting worse)
+- "x" = fell/unseated, "0" = finished 10th+
+- Last 3 starts carry ~60% of form weight; older runs are context only.
+
+ODDS-TO-PROBABILITY CONVERSION:
+Convert fixed odds to implied probability: P = 1/odds.
+- $2.00 = 50%, $3.00 = 33%, $5.00 = 20%, $10.00 = 10%, $20.00 = 5%
+- Compare your assessed probability to implied probability
+- Only bet when your probability > implied probability (= overlay/value)
+- Example: If you assess 40% chance but odds are $3.00 (33%), that's value
+
+PACE ANALYSIS:
+- Identify front-runners (leads early), on-pace (sits 2nd-3rd), midfield, and closers
+- Count front-runners: 0-1 = slow pace (favors leaders), 3+ = fast pace (favors closers)
+- Inside barriers favor leaders, outside barriers suit closers at most tracks
+- Short races (<1200m) favor speed; longer races (>1600m) favor stamina/closers
+
+RESEARCH INTEGRATION:
+- Prioritize recent form data (60% weight) over general web research (40%)
+- Track-specific performance is more predictive than overall record
+- Same-distance form > different-distance form
+- Wet track form only relevant on wet days; ignore on dry tracks
 
 Provide a detailed analysis that will inform betting decisions. Be specific about strengths and weaknesses of key contenders.
 """
@@ -350,27 +377,42 @@ CRITICAL RULES:
 - Every bet you include MUST have amount > 0 (minimum $1).
 - Only include bets you actually recommend. Omit others by setting them to null.
 
-Guidelines:
-- Only recommend bets you have confidence in (confidence_score >= 0.5)
-- Win bets: Horse most likely to win
-- Place bets: Safer option for top 3 finish
-- Exacta: Specific 1-2 finish order
-- Quinella: Two horses for 1-2 in any order
-- Trifecta: Specific 1-2-3 finish order
-- First4: Specific 1-2-3-4 finish order
-- QPS: 2-4 horses where any 2 finish in top 3
+BET TYPE DEFINITIONS:
+- Win: Horse most likely to win outright
+- Place: Horse to finish in top 3 (safer, lower return)
+- Exacta: Predict 1st AND 2nd in exact order — high difficulty, high reward
+- Quinella: Predict 1st AND 2nd in ANY order — easier than exacta
+- Trifecta: Predict 1st, 2nd AND 3rd in exact order — very hard
+- First4: Predict 1st through 4th in exact order — extremely hard
+- QPS (Quinella Place Selection): Pick exactly 3 horses, any 2 must finish in top 3
 
-Bet amounts should reflect confidence (minimum $1 for any bet):
-- High confidence (0.8+): $5-10
-- Medium confidence (0.6-0.8): $2-5
-- Lower confidence (0.5-0.6): $1-2
+EXOTIC BET CONSTRUCTION RULES:
+- Quinella vs Exacta: Use quinella when you're confident about two horses but not their order. Use exacta only when you have strong conviction about the finishing ORDER.
+- Trifecta: Only bet when you have 3 clear standouts AND can rank them. Skip if field is competitive.
+- First4: Only bet at high confidence (0.8+) in weak fields where top 4 is predictable.
+- QPS: Best value exotic — only need 2 of 3 horses in top 3. Use when you see 3 clear contenders.
+
+VALUE BETTING PRINCIPLE:
+- ONLY bet when your assessed probability EXCEEDS the implied probability from odds.
+- Implied probability = 1 / decimal_odds (e.g., $4.00 odds = 25% implied)
+- If you assess a horse at 35% but odds imply 25%, that's a 10% edge — BET.
+- If you assess 20% but odds imply 25%, that's NEGATIVE value — SKIP.
+- Never bet just because a horse "looks good" — quantify the edge.
+
+BET SIZING (Kelly-inspired):
+- Size bets proportional to your edge: bigger edge = bigger bet
+- High edge (>15%): $5-10
+- Medium edge (8-15%): $3-5
+- Small edge (3-8%): $1-3
+- No edge or negative edge: DO NOT BET (set to null)
+- Exotics (exacta, trifecta, first4): cap at $3-5 due to difficulty
 
 Set risk_level based on:
 - Low: Clear favorites, proven form
 - Medium: Competitive field, some uncertainty
 - High: Long shots, unpredictable race
 
-Provide clear reasoning for each bet recommendation.
+In key_factors, explicitly state: which research findings influenced your picks, the probability vs odds comparison, and pace scenario outcome.
 """
 
     async def analyze_race(self, race_data: Dict[str, Any]) -> StructuredBetOutput:

@@ -68,6 +68,20 @@ Your analysis should:
 - Evaluate risk factors with statistical precision
 - Think through cause-effect relationships step-by-step
 
+TRACK CONDITION IMPACT:
+- Firm/Good: Favors horses with speed and good firm-track records
+- Soft/Heavy: Dramatically changes form — check wet track history specifically
+- Synthetic: Different skillset; some horses love it, others hate it
+- Weight track condition impact heavily in your analysis
+
+FORM TRENDS (weight these heavily):
+- Last 3 races are most predictive — analyze these in detail
+- Look for class changes (up/down) and whether horse is competitive at this level
+- First-up (fresh) or second-up patterns — some horses peak fresh, others need a run
+- Spell length matters: >12 weeks = fitness question mark
+
+Explicitly state which research findings from the web search influenced your analysis.
+
 You have ~8K tokens for reasoning - use them wisely for rigorous analysis.
 Don't just state facts - explain the reasoning chain behind conclusions.
 """
@@ -87,5 +101,6 @@ As Gemini with high reasoning effort (80% thinking budget), your betting strateg
 - Clear explanation of reasoning chain in key_factors
 
 Your confidence_score should reflect genuine epistemic uncertainty after deep analysis.
+In key_factors, include: "Assessed X at Y% vs implied Z% = edge/no-edge" for your main selections.
 """
         return base_prompt + gemini_specific

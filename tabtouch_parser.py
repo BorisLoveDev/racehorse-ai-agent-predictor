@@ -871,6 +871,40 @@ class TabTouchParser:
         """Parse dividends (always returns float for amount)."""
         dividends = {}
 
+        # --- Win dividend (single float) ---
+        try:
+            win_item = self.page.locator('li:has-text("Win")').first
+            if await win_item.count() > 0:
+                text = await win_item.inner_text()
+                amount_match = re.search(r'\$[\d,]+\.?\d*', text)
+                if amount_match:
+                    dividends["win"] = float(amount_match.group().replace("$", "").replace(",", ""))
+        except:
+            pass
+
+        # --- Place dividends (list of floats, ordered by finishing position) ---
+        try:
+            place_items = self.page.locator('li:has-text("Place")')
+            place_count = await place_items.count()
+            place_amounts = []
+            if place_count == 1:
+                # All place dividends in one <li> — extract all $X.XX amounts
+                text = await place_items.first.inner_text()
+                amounts = re.findall(r'\$[\d,]+\.?\d*', text)
+                place_amounts = [float(a.replace("$", "").replace(",", "")) for a in amounts]
+            elif place_count > 1:
+                # Separate <li> per placed horse
+                for i in range(min(place_count, 3)):
+                    text = await place_items.nth(i).inner_text()
+                    amount_match = re.search(r'\$[\d,]+\.?\d*', text)
+                    if amount_match:
+                        place_amounts.append(float(amount_match.group().replace("$", "").replace(",", "")))
+            if place_amounts:
+                dividends["place"] = place_amounts
+        except:
+            pass
+
+        # --- Exotic dividends (dict with combination + amount) ---
         div_types = ["Quinella", "Exacta", "Trifecta", "First 4", "Double", "Quaddie"]
 
         for div_type in div_types:

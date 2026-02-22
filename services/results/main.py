@@ -350,8 +350,17 @@ class ResultsEvaluationService:
 
             bet_results["win"] = is_win
             if is_win and winner:
-                # Calculate payout (bet_amount * odds)
-                odds = winner.get("fixed_win", 0) or winner.get("tote_win", 0)
+                # Use actual win dividend if available, fallback to pre-race odds
+                win_div = race_result.dividends.get("win")
+                if win_div:
+                    if isinstance(win_div, list) and win_div:
+                        odds = win_div[0].get("amount", 0) if isinstance(win_div[0], dict) else win_div[0]
+                    elif isinstance(win_div, dict):
+                        odds = win_div.get("amount", 0)
+                    else:
+                        odds = float(win_div) if win_div else 0
+                else:
+                    odds = winner.get("fixed_win", 0) or winner.get("tote_win", 0)
                 payouts["win"] = win_bet["amount"] * odds
 
         # Place bet
@@ -363,12 +372,21 @@ class ResultsEvaluationService:
 
             bet_results["place"] = is_place
             if is_place:
-                # Find the horse and get place odds
-                for horse in finishing_order[:3]:
-                    if horse.get("number") == horse_num:
-                        odds = horse.get("fixed_place", 0) or horse.get("tote_place", 0)
-                        payouts["place"] = place_bet["amount"] * odds
-                        break
+                # Use actual place dividend if available, fallback to pre-race odds
+                place_div = race_result.dividends.get("place")
+                odds = 0
+                if place_div and isinstance(place_div, list):
+                    # Place dividends ordered by finishing position
+                    for i, horse in enumerate(finishing_order[:3]):
+                        if horse.get("number") == horse_num and i < len(place_div):
+                            odds = place_div[i]
+                            break
+                if not odds:
+                    for horse in finishing_order[:3]:
+                        if horse.get("number") == horse_num:
+                            odds = horse.get("fixed_place", 0) or horse.get("tote_place", 0)
+                            break
+                payouts["place"] = place_bet["amount"] * odds
 
         # Exacta bet
         if structured_bet.get("exacta_bet"):
@@ -380,7 +398,9 @@ class ResultsEvaluationService:
             )
             bet_results["exacta"] = is_exacta
             if is_exacta and race_result.dividends.get("exacta"):
-                payouts["exacta"] = exacta_bet["amount"] * race_result.dividends["exacta"]
+                div = race_result.dividends["exacta"]
+                div_amount = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["exacta"] = exacta_bet["amount"] * div_amount
 
         # Quinella bet
         if structured_bet.get("quinella_bet"):
@@ -391,7 +411,9 @@ class ResultsEvaluationService:
 
             bet_results["quinella"] = is_quinella
             if is_quinella and race_result.dividends.get("quinella"):
-                payouts["quinella"] = quinella_bet["amount"] * race_result.dividends["quinella"]
+                div = race_result.dividends["quinella"]
+                div_amount = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["quinella"] = quinella_bet["amount"] * div_amount
 
         # Trifecta bet
         if structured_bet.get("trifecta_bet"):
@@ -404,7 +426,9 @@ class ResultsEvaluationService:
             )
             bet_results["trifecta"] = is_trifecta
             if is_trifecta and race_result.dividends.get("trifecta"):
-                payouts["trifecta"] = trifecta_bet["amount"] * race_result.dividends["trifecta"]
+                div = race_result.dividends["trifecta"]
+                div_amount = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["trifecta"] = trifecta_bet["amount"] * div_amount
 
         # First4 bet
         if structured_bet.get("first4_bet"):
@@ -414,7 +438,9 @@ class ResultsEvaluationService:
 
             bet_results["first4"] = is_first4
             if is_first4 and race_result.dividends.get("first4"):
-                payouts["first4"] = first4_bet["amount"] * race_result.dividends["first4"]
+                div = race_result.dividends["first4"]
+                div_amount = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["first4"] = first4_bet["amount"] * div_amount
 
         # QPS bet
         if structured_bet.get("qps_bet"):
@@ -426,7 +452,9 @@ class ResultsEvaluationService:
 
             bet_results["qps"] = is_qps
             if is_qps and race_result.dividends.get("qps"):
-                payouts["qps"] = qps_bet["amount"] * race_result.dividends.get("qps", 0)
+                div = race_result.dividends["qps"]
+                div_amount = div.get("amount", 0) if isinstance(div, dict) else div
+                payouts["qps"] = qps_bet["amount"] * div_amount
 
         # Calculate total bet amount
         total_bet_amount = sum(

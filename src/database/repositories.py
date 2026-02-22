@@ -511,7 +511,7 @@ class StatisticsRepository:
         return "AND po.evaluated_at >= ?", [start.isoformat()]
 
     def get_statistics_for_period(self, period: str = "all") -> list[dict]:
-        """Get agent statistics for specified period."""
+        """Get agent statistics for specified period with per-bet-type breakdown."""
         where_clause, params = self._get_date_filter(period)
 
         query = f"""
@@ -519,11 +519,43 @@ class StatisticsRepository:
                 a.agent_name,
                 COUNT(DISTINCT p.prediction_id) as total_predictions,
                 COUNT(po.outcome_id) as total_bets,
-                SUM(CASE WHEN po.net_profit_loss > 0 THEN 1 ELSE 0 END) as total_wins,
-                SUM(CASE WHEN po.net_profit_loss <= 0 THEN 1 ELSE 0 END) as total_losses,
+                SUM(CASE WHEN (po.win_result = 1 OR po.place_result = 1 OR po.exacta_result = 1
+                    OR po.quinella_result = 1 OR po.trifecta_result = 1 OR po.first4_result = 1
+                    OR po.qps_result = 1) THEN 1 ELSE 0 END) as total_wins,
+                SUM(CASE WHEN NOT (po.win_result = 1 OR po.place_result = 1 OR po.exacta_result = 1
+                    OR po.quinella_result = 1 OR po.trifecta_result = 1 OR po.first4_result = 1
+                    OR po.qps_result = 1) THEN 1 ELSE 0 END) as total_losses,
                 SUM(po.total_bet_amount) as total_bet_amount,
                 SUM(po.total_payout) as total_payout,
-                SUM(po.net_profit_loss) as net_profit_loss
+                SUM(po.net_profit_loss) as net_profit_loss,
+                -- Per-bet-type: win
+                SUM(CASE WHEN po.win_result = 1 THEN 1 ELSE 0 END) as win_bets_won,
+                SUM(CASE WHEN po.win_result IS NOT NULL THEN 1 ELSE 0 END) as win_bets_placed,
+                SUM(COALESCE(po.win_payout, 0)) as win_total_payout,
+                -- Per-bet-type: place
+                SUM(CASE WHEN po.place_result = 1 THEN 1 ELSE 0 END) as place_bets_won,
+                SUM(CASE WHEN po.place_result IS NOT NULL THEN 1 ELSE 0 END) as place_bets_placed,
+                SUM(COALESCE(po.place_payout, 0)) as place_total_payout,
+                -- Per-bet-type: exacta
+                SUM(CASE WHEN po.exacta_result = 1 THEN 1 ELSE 0 END) as exacta_bets_won,
+                SUM(CASE WHEN po.exacta_result IS NOT NULL THEN 1 ELSE 0 END) as exacta_bets_placed,
+                SUM(COALESCE(po.exacta_payout, 0)) as exacta_total_payout,
+                -- Per-bet-type: quinella
+                SUM(CASE WHEN po.quinella_result = 1 THEN 1 ELSE 0 END) as quinella_bets_won,
+                SUM(CASE WHEN po.quinella_result IS NOT NULL THEN 1 ELSE 0 END) as quinella_bets_placed,
+                SUM(COALESCE(po.quinella_payout, 0)) as quinella_total_payout,
+                -- Per-bet-type: trifecta
+                SUM(CASE WHEN po.trifecta_result = 1 THEN 1 ELSE 0 END) as trifecta_bets_won,
+                SUM(CASE WHEN po.trifecta_result IS NOT NULL THEN 1 ELSE 0 END) as trifecta_bets_placed,
+                SUM(COALESCE(po.trifecta_payout, 0)) as trifecta_total_payout,
+                -- Per-bet-type: first4
+                SUM(CASE WHEN po.first4_result = 1 THEN 1 ELSE 0 END) as first4_bets_won,
+                SUM(CASE WHEN po.first4_result IS NOT NULL THEN 1 ELSE 0 END) as first4_bets_placed,
+                SUM(COALESCE(po.first4_payout, 0)) as first4_total_payout,
+                -- Per-bet-type: qps
+                SUM(CASE WHEN po.qps_result = 1 THEN 1 ELSE 0 END) as qps_bets_won,
+                SUM(CASE WHEN po.qps_result IS NOT NULL THEN 1 ELSE 0 END) as qps_bets_placed,
+                SUM(COALESCE(po.qps_payout, 0)) as qps_total_payout
             FROM agents a
             LEFT JOIN predictions p ON a.agent_id = p.agent_id
             LEFT JOIN prediction_outcomes po ON p.prediction_id = po.prediction_id
@@ -547,7 +579,17 @@ class StatisticsRepository:
                     "total_losses": row[4] or 0,
                     "total_bet_amount": row[5] or 0.0,
                     "total_payout": row[6] or 0.0,
-                    "net_profit_loss": row[7] or 0.0
+                    "net_profit_loss": row[7] or 0.0,
+                    # Per-bet-type breakdown
+                    "bet_types": {
+                        "win": {"won": row[8] or 0, "placed": row[9] or 0, "payout": row[10] or 0.0},
+                        "place": {"won": row[11] or 0, "placed": row[12] or 0, "payout": row[13] or 0.0},
+                        "exacta": {"won": row[14] or 0, "placed": row[15] or 0, "payout": row[16] or 0.0},
+                        "quinella": {"won": row[17] or 0, "placed": row[18] or 0, "payout": row[19] or 0.0},
+                        "trifecta": {"won": row[20] or 0, "placed": row[21] or 0, "payout": row[22] or 0.0},
+                        "first4": {"won": row[23] or 0, "placed": row[24] or 0, "payout": row[25] or 0.0},
+                        "qps": {"won": row[26] or 0, "placed": row[27] or 0, "payout": row[28] or 0.0},
+                    }
                 })
             return statistics
         finally:

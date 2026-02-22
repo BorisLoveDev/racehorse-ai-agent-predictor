@@ -246,11 +246,22 @@ class TelegramNotificationService:
             lines.extend([
                 f"<b>{agent_name}:</b>",
                 f"  Predictions: {stats['total_predictions']}",
-                f"  Bets: {total_bets} ({total_wins}W-{stats['total_losses']}L)",
-                f"  Win Rate: {win_rate:.1f}%",
+                f"  Overall: {total_wins}W-{stats['total_losses']}L ({win_rate:.1f}%)",
                 f"  P/L: ${profit_loss:+.2f}",
                 ""
             ])
+
+            # Per-bet-type breakdown
+            bet_types = stats.get("bet_types", {})
+            for bt_name, bt_data in bet_types.items():
+                placed = bt_data["placed"]
+                if placed > 0:
+                    won = bt_data["won"]
+                    rate = (won / placed * 100) if placed > 0 else 0
+                    payout = bt_data["payout"]
+                    bt_display = bt_name.replace("_", " ").title()
+                    lines.append(f"  {bt_display}: {won}/{placed} ({rate:.0f}%) | ${payout:+.2f}")
+            lines.append("")
 
         chart_data = self.stats_repo.get_pl_chart_data(period)
         chart_buf = generate_pl_chart(chart_data, period_display[period]) if chart_data else None
@@ -1062,14 +1073,27 @@ class TelegramNotificationService:
                 else:
                     lines.append(f"  {emoji} Place: {pred_str} → {actual_str}")
 
-        for bet_type in ["exacta", "quinella", "trifecta", "first4", "qps"]:
+        bet_type_keys = {
+            "exacta": "exacta_bet",
+            "quinella": "quinella_bet",
+            "trifecta": "trifecta_bet",
+            "first4": "first4_bet",
+            "qps": "qps_bet",
+        }
+        for bet_type, bet_key in bet_type_keys.items():
             if bet_results.get(bet_type) is not None:
                 won = bet_results[bet_type]
                 emoji = "✅" if won else "❌"
                 bet_type_display = bet_type.replace("_", " ").title()
                 payout = payouts.get(bet_type, 0)
+                bet_amount = structured_bet.get(bet_key, {}).get("amount", 0) if structured_bet.get(bet_key) else 0
+                # Get actual dividend for this exotic type
+                exotic_div = actual_dividends.get(bet_type, {})
+                div_val = list(exotic_div.values())[0] if exotic_div else 0
                 if won and payout > 0:
-                    lines.append(f"  {emoji} {bet_type_display}: +${payout:.2f}")
+                    lines.append(f"  {emoji} {bet_type_display}: ${bet_amount} → @${div_val:.2f} = +${payout:.2f}")
+                elif bet_amount > 0:
+                    lines.append(f"  {emoji} {bet_type_display}: ${bet_amount}")
                 else:
                     lines.append(f"  {emoji} {bet_type_display}")
 
