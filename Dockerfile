@@ -47,6 +47,11 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
+# Entrypoint runs migrations before each service
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
 # Target: monitor
 FROM base AS monitor
 CMD ["python3", "services/monitor/main.py"]
