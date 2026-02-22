@@ -4,6 +4,9 @@ services:
     image: searxng/searxng:latest
     container_name: racehorse-searxng
     # No external port needed - only accessed internally via Docker network
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ./config/searxng:/etc/searxng:rw
       - searxng_data:/var/cache/searxng
@@ -40,6 +43,9 @@ services:
       context: .
       dockerfile: services/monitor/Dockerfile
     container_name: racehorse-monitor
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       redis:
         condition: service_healthy
@@ -62,6 +68,9 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     container_name: racehorse-orchestrator
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       redis:
         condition: service_healthy
@@ -86,6 +95,9 @@ services:
       context: .
       dockerfile: services/results/Dockerfile
     container_name: racehorse-results
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       redis:
         condition: service_healthy
@@ -107,6 +119,9 @@ services:
       context: .
       dockerfile: services/telegram/Dockerfile
     container_name: racehorse-telegram
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       redis:
         condition: service_healthy

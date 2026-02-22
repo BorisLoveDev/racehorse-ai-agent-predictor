@@ -44,7 +44,7 @@ class TelegramNotificationService:
         self.pubsub = None
 
         # Rate limiting (20 msg/sec for safety margin below Telegram's 30/sec limit)
-        self.message_queue: asyncio.Queue = asyncio.Queue()
+        self.message_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
         self.rate_limit_delay = 1.0 / 20  # 20 messages per second
         self.last_send_time = 0.0
 
@@ -75,9 +75,6 @@ class TelegramNotificationService:
         self.router = Router()
         self._setup_commands()
         self.dp.include_router(self.router)
-
-        # Initialize parser for /races command
-        self.parser = None
 
     def _setup_commands(self):
         """Setup command handlers."""
@@ -127,19 +124,16 @@ class TelegramNotificationService:
         @self.router.message(Command("races"))
         async def cmd_races(message: Message):
             """Show upcoming races."""
-            if not self.parser:
-                self.parser = TabTouchParser(headless=True)
-                await self.parser.__aenter__()
-
             try:
-                races = await self.parser.get_next_races()
-                lines = ["<b>🏇 Upcoming Races:</b>", ""]
+                async with TabTouchParser(headless=True) as parser:
+                    races = await parser.get_next_races()
+                    lines = ["<b>🏇 Upcoming Races:</b>", ""]
 
-                for race in races[:10]:
-                    time_str = race.time_parsed.strftime("%H:%M") if race.time_parsed else "?"
-                    lines.append(f"• {race.location} R{race.race_number} — {time_str}")
+                    for race in races[:10]:
+                        time_str = race.time_parsed.strftime("%H:%M") if race.time_parsed else "?"
+                        lines.append(f"• {race.location} R{race.race_number} — {time_str}")
 
-                await message.answer("\n".join(lines))
+                    await message.answer("\n".join(lines))
             except Exception as e:
                 logger.error(f"Error in /races command: {e}", exc_info=True)
                 await message.answer(f"Error fetching races: {e}")
@@ -274,32 +268,28 @@ class TelegramNotificationService:
 
                 await message.answer(f"Found {len(pending)} predictions across {len(races)} races")
 
-                # Initialize parser if needed
-                if not self.parser:
-                    self.parser = TabTouchParser(headless=True)
-                    await self.parser.__aenter__()
-
                 evaluated = 0
                 skipped = 0
 
-                for race_url, predictions in races.items():
-                    try:
-                        race_result = await self.parser.get_race_results(race_url)
+                async with TabTouchParser(headless=True) as parser:
+                    for race_url, predictions in races.items():
+                        try:
+                            race_result = await parser.get_race_results(race_url)
 
-                        if not race_result or not race_result.finishing_order:
+                            if not race_result or not race_result.finishing_order:
+                                skipped += len(predictions)
+                                continue
+
+                            for pred in predictions:
+                                eval_result = await self._evaluate_prediction_for_cmd(pred, race_result)
+                                if eval_result:
+                                    evaluated += 1
+                                else:
+                                    skipped += 1
+
+                        except Exception as e:
+                            logger.error(f"Error evaluating race | url={race_url} | error={e}", exc_info=True)
                             skipped += len(predictions)
-                            continue
-
-                        for pred in predictions:
-                            eval_result = await self._evaluate_prediction_for_cmd(pred, race_result)
-                            if eval_result:
-                                evaluated += 1
-                            else:
-                                skipped += 1
-
-                    except Exception as e:
-                        logger.error(f"Error evaluating race | url={race_url} | error={e}", exc_info=True)
-                        skipped += len(predictions)
 
                 lines = [
                     "<b>✓ Evaluation complete</b>",
@@ -885,8 +875,6 @@ class TelegramNotificationService:
             await self.pubsub.close()
         if self.redis_client:
             await self.redis_client.close()
-        if self.parser:
-            await self.parser.__aexit__(None, None, None)
         await self.bot.session.close()
         logger.info("Telegram service stopped")
 
