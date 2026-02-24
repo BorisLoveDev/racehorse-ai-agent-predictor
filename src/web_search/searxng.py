@@ -25,7 +25,7 @@ class SearXNGSearch:
             base_url: SearXNG instance URL (default: from env or localhost)
             timeout: Request timeout in seconds
         """
-        self.base_url = base_url or os.getenv("SEARXNG_URL", "http://localhost:8080")
+        self.base_url = base_url or os.getenv("SEARXNG_URL", "http://searxng:8080")
         self.timeout = aiohttp.ClientTimeout(total=timeout)
 
     async def search(

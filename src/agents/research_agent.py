@@ -16,6 +16,7 @@ Optimized config (per multi-model analysis):
 """
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -102,7 +103,7 @@ class ResearchAgent:
             enable_cache=web_search_settings.enable_cache,
             cache_ttl_seconds=web_search_settings.cache_ttl_seconds,
             search_engine=web_search_settings.engine,
-            searxng_url=web_search_settings.searxng_url,
+            searxng_url=os.getenv("SEARXNG_URL", web_search_settings.searxng_url),
         )
 
     async def research(self, race_data: Dict[str, Any]) -> RaceResearchContext:

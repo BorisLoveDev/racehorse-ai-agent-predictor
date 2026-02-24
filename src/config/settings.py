@@ -185,8 +185,8 @@ class WebSearchSettings(BaseSettings):
         description="Search engine: 'searxng' (recommended) or 'duckduckgo'"
     )
     searxng_url: str = Field(
-        default="http://localhost:8080",
-        description="SearXNG instance URL"
+        default="http://searxng:8080",
+        description="SearXNG instance URL (Docker service name)"
     )
     mode: str = Field(
         default="lite",

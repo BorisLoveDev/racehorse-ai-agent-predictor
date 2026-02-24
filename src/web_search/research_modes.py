@@ -63,7 +63,7 @@ class WebResearcher:
         enable_cache: bool = True,
         cache_ttl_seconds: int = 300,
         search_engine: str = "searxng",
-        searxng_url: str = "http://localhost:8080",
+        searxng_url: str = "http://searxng:8080",
     ):
         """
         Initialize WebResearcher.
