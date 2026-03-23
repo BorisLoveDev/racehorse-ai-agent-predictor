@@ -333,3 +333,303 @@ See `BUGFIX_SUMMARY.md` for detailed verification procedures.
 **Results not being evaluated:**
 - Monitor must send `race:schedule_result_check` (check for time parsing errors)
 - Results service checks at `race_start_time + result_wait_minutes`
+
+<!-- GSD:project-start source:PROJECT.md -->
+## Project
+
+**Stake Horse Racing Advisor Bot**
+
+A Telegram-driven AI betting advisor for horse racing on Stake.com. The user pastes raw page text from Stake.com directly into the bot, and the system runs it through a multi-step analysis pipeline: parsing odds → web research → AI analysis → bankroll-aware bet sizing → results tracking → reflective learning. Built as a new branch/service in the existing racehorse-agent repo, sharing infrastructure (OpenRouter, SearXNG, Telegram bot token, SQLite, Docker on Meridian).
+
+**Core Value:** Given raw Stake.com race data, produce mathematically sound bet recommendations — sized relative to bankroll — or advise to skip when the odds are squeezed.
+
+### Constraints
+
+- **Tech Stack**: Python 3.13+, aiogram, OpenRouter API, SQLite, Docker — consistent with existing repo
+- **Deployment**: Meridian server (2 vCPU, 4GB RAM) — no heavy ML models locally
+- **Cost**: Per-race analysis cost should stay under existing agent cost profile (~$0.05–0.10)
+- **Single user**: No auth required, single chat ID in env
+- **Branch isolation**: New `stake-advisor` branch — no changes to existing services
+<!-- GSD:project-end -->
+
+<!-- GSD:stack-start source:codebase/STACK.md -->
+## Technology Stack
+
+## Languages
+- Python 3.11+ - All backend services, scrapers, and AI agents
+- Python 3.13 - Tested on development host
+- None - monolithic Python codebase
+## Runtime
+- Docker 27+ with Docker Compose for containerized deployment
+- Python 3.11-slim base image in production containers
+- pip (Python package manager)
+- Lockfile: Not detected (requirements.txt used without hash lock)
+## Frameworks
+- Playwright 1.40.0+ - Async browser automation for web scraping TabTouch
+- Pydantic 2.5.0+ - Data validation and settings management
+- Pydantic Settings 2.1.0+ - Environment-based configuration with nested delimiter support
+- LangChain 0.1.0+ - Framework for LLM applications and agent workflows
+- LangChain OpenAI 0.0.5+ - OpenRouter integration through ChatOpenAI
+- LangChain Community 0.0.20+ - Community integrations and utilities
+- Langgraph 0.0.20+ - Graph-based workflow orchestration for agents (two-step analysis + bet generation)
+- aiohttp 3.9.0+ - Async HTTP client for API calls and web scraping
+- asyncio-redis 0.16.0+ - Legacy async Redis support (overlaps with redis package)
+- aiogram 3.4.0+ - Telegram bot framework with callback data and inline keyboards
+- Telegram Bot API - HTTP-based communication with Telegram service
+- BeautifulSoup4 4.12.0+ - HTML parsing for web scraping
+- lxml 5.0.0+ - XML/HTML parser backend for BeautifulSoup
+- SQLite3 - Built-in Python, file-based SQL database at `races.db`
+- Redis 7-alpine (Docker) - In-memory pub/sub message broker (redis:// protocol)
+- nest-asyncio 1.6.0+ - Allows nested event loop execution (for REPL testing)
+- matplotlib 3.8.0+ - Chart generation for performance statistics
+## Key Dependencies
+- LangChain (0.1.0+) - LLM framework binding agents, web search, and structured output together
+- Playwright (1.40.0+) - Browser automation for scraping TabTouch (Chromium required)
+- Pydantic (2.5.0+) - Serialization/deserialization of race data and betting recommendations
+- aiogram (3.4.0+) - Telegram bot API abstraction layer
+- redis (5.0.0+) - async Redis for pub/sub messaging between services
+- aiohttp (3.9.0+) - All HTTP requests (web search, API calls)
+- BeautifulSoup4 (4.12.0+) - HTML content extraction from websites
+## Configuration
+- Pydantic Settings with `env_prefix="RACEHORSE_"` and `env_nested_delimiter="__"`
+- Load from `.env` file first, environment variables override
+- Hierarchical structure: `RACEHORSE_AGENTS__GEMINI__MAX_TOKENS=10000`
+- `RACEHORSE_TIMING__*` - Race monitoring intervals and result check timing
+- `RACEHORSE_BETTING__*` - Bet thresholds and exotic bet enablement
+- `RACEHORSE_AGENTS__*` - Model IDs, reasoning effort, temperature, token limits
+- `RACEHORSE_API_KEYS__*` - OpenRouter and Telegram credentials (SecretStr type)
+- `RACEHORSE_REDIS__*` - Redis host/port/password
+- `RACEHORSE_DATABASE__PATH` - SQLite database file path
+- `RACEHORSE_WEB_SEARCH__*` - Search engine mode (searxng/duckduckgo), URLs, cache settings
+- `SOURCE_TIMEZONE` - TabTouch timezone (Australia/Perth, hardcoded in logic)
+- `CLIENT_TIMEZONE` - User display timezone (Asia/Kuala_Lumpur default)
+- `Dockerfile` - Multi-target: base, monitor, orchestrator, results, telegram
+- `Dockerfile.base` - Reusable base image with Playwright browsers pre-installed
+- `docker-compose.yml` - 6 services: redis, searxng, monitor, orchestrator, results, telegram
+- `.dockerignore` - Standard exclusions
+- `entrypoint.sh` - Migration runner before service startup
+## Platform Requirements
+- macOS host with Miniforge/conda (per CLAUDE.md)
+- Python 3.13.12 tested
+- Virtual environment: `source venv/bin/activate`
+- Playwright browsers auto-installed on first use or in Docker build
+- Coolify self-hosted PaaS on Meridian server (2 vCPU, 4GB RAM, Ubuntu 24.04)
+- Docker Compose orchestration via Coolify buildpack (`dockercompose`)
+- Health checks on Redis and SearXNG (HTTP GET /healthz)
+- Volumes: `redis_data`, `db_data`, `race_data`, `searxng_data`
+- Network: bridge mode (`racehorse-network`)
+- Coolify reads `docker-compose.yml` from git (`BorisLoveDev/racehorse-ai-agent-predictor` main branch)
+- Build via Coolify API: `mcp__coolify__deploy(tag_or_uuid="y8k408og84488csc4gss4gws")`
+- SSH fallback: `ssh meridian "cd /data/coolify && docker compose up -d"`
+- Docker image build requires 8-10 minutes (Playwright Chromium binary inclusion)
+- 4GB RAM server: `--no-cache` builds can trigger OOM-kill (use `docker build` with cache if possible)
+- Base image reuse: Dockerfile.base cached once, each service target adds only CMD
+<!-- GSD:stack-end -->
+
+<!-- GSD:conventions-start source:CONVENTIONS.md -->
+## Conventions
+
+## Naming Patterns
+- Module files: `snake_case.py` (e.g., `tabtouch_parser.py`, `logging_config.py`)
+- Service entry points: `main.py` in service directories (e.g., `services/monitor/main.py`, `services/orchestrator/main.py`)
+- Agent implementations: descriptive names with `_agent.py` suffix (e.g., `gemini_agent.py`, `grok_agent.py`, `base.py`)
+- Repository/data access: descriptive names with `_agent.py` or descriptive module name (e.g., `repositories.py`, `migrations.py`)
+- Configuration: `settings.py`, `logging_config.py`
+- snake_case throughout (e.g., `parse_race_time()`, `get_next_races()`, `ensure_utc_aware()`)
+- Private/internal functions: `_prefixed_name()` (e.g., `_build_workflow()`, `_web_search()`)
+- Async functions: same convention but declared with `async def` (e.g., `async def start()`, `async def analyze_race()`)
+- Methods and properties follow snake_case (e.g., `self.agent_name`, `self.redis_client`)
+- snake_case for all variables (e.g., `race_data`, `search_results`, `redis_client`)
+- Constants: UPPER_SNAKE_CASE (e.g., `SOURCE_TIMEZONE`, `CLIENT_TIMEZONE`, `RACE_CACHE_TTL`)
+- Private/internal: leading underscore (e.g., `_race_cache`, `_race_detail_cache`, `_digest_races`)
+- Type hints: used throughout for function parameters and return values
+- PascalCase for classes (e.g., `BaseRaceAgent`, `GeminiAgent`, `GrokAgent`, `TabTouchParser`, `WinBet`, `PlaceBet`)
+- TypedDict for state objects (e.g., `AgentState` with typed fields)
+- Pydantic BaseModel for data validation (e.g., `WinBet`, `PlaceBet`, `ExactaBet`, structured bet models)
+- Dataclass for data containers (e.g., `RaceResearchContext`, `SearchResult`, `ResearchResult`)
+## Code Style
+- No explicit formatter configured (no .prettierrc or similar)
+- Follows Python PEP 8 conventions implicitly
+- Line length: implicit, appears to be flexible (some lines >88 chars)
+- Indentation: 4 spaces throughout
+- Blank lines: single blank line between methods, double blank lines between class definitions
+- No explicit linter configured (no .eslintrc, ruff.toml, or pylint config)
+- Type hints are mandatory in function signatures
+- All async functions are properly declared with `async def`
+- Context managers used appropriately (`async with`, `with`)
+- Module-level docstrings: present in all files, triple-quote format
+- Function docstrings: Present in key functions, Google-style with Args/Returns sections
+- Example from `base.py`:
+- Example from `tabtouch_parser.py`:
+## Import Organization
+- Relative imports used consistently: `from ..config.settings`, `from ..models.bets`, `from ..database.repositories`
+- System path manipulation when needed (services): `sys.path.insert(0, str(Path(__file__).parent.parent.parent))`
+- Type hints with TYPE_CHECKING guard for circular dependencies: `if TYPE_CHECKING: from .research_agent import RaceResearchContext`
+## Error Handling
+- Try/except with specific exception types where possible
+- Wrap external API calls (LLM, TabTouch scraper) in try/except blocks
+- Use `exc_info=True` when logging exceptions: `logger.error(f"Error: {e}", exc_info=True)`
+- Exponential backoff for retries in result checks (configured in settings)
+- Graceful degradation: services log errors and continue rather than crashing
+- ValueError raised for validation failures (e.g., API key not configured)
+## Logging
+- Centralized configuration in `src/logging_config.py`
+- Custom `ServiceFormatter` adds timestamps, log levels, and service context
+- Services initialize logger at module level: `logger = setup_logging("service_name")`
+- Service names: `"monitor"`, `"orchestrator"`, `"results"`, `"telegram"`
+- Info level for startup messages: `logger.info(f"🚀 Service Started v{version}")`
+- Error level with full traceback for failures: `logger.error(f"Message: {e}", exc_info=True)`
+- Warning level for non-critical issues: `logger.warning(f"Received naive datetime: {dt}")`
+- Log format: `[TIMESTAMP] [LEVEL] [SERVICE] Message`
+## Comments
+- Complex timezone handling (explicit comments about Perth/UTC conversions)
+- Non-obvious regex patterns (e.g., race time parsing patterns in `tabtouch_parser.py`)
+- Algorithm choices and trade-offs (e.g., research mode selection)
+- External API/format documentation (e.g., Telegram callback data 64-byte limit)
+- Module-level docstrings required in all .py files
+- Function docstrings with Args/Returns for public functions
+- Inline comments for complex logic
+## Async Programming
+- All I/O operations use async/await (Playwright, Redis, HTTP)
+- Services use `async with` for resource management
+- Context managers: `async with parser:`, `async with self.parser:`
+- Message listening loops: `async for message in pubsub.listen():`
+- Concurrent execution: `asyncio.gather()` for parallel agent execution
+## Function Design
+- Average function: 15-50 lines
+- Complex workflows: 100+ lines with clear sections
+- Methods delegated to private methods (e.g., `_generate_search_queries()`, `_web_search()`, `_deep_analysis()`)
+- Use keyword arguments for clarity on complex functions
+- Pydantic models and TypedDict for structured parameters
+- Type hints mandatory (e.g., `race_data: dict[str, Any]`)
+- Optional parameters with defaults and `Optional` type hint
+- Explicit types: `-> str`, `-> dict`, `-> Optional[int]`
+- Return early pattern for error handling
+- None used for missing values, not False
+## Module Design
+- No explicit `__all__` lists
+- All public classes/functions available for import
+- Private functions prefixed with `_` but still importable
+- Empty `__init__.py` files in package directories (`src/models/__init__.py`, `src/agents/__init__.py`)
+- No re-exports in __init__.py files
+- Direct imports used: `from src.agents.gemini_agent import GeminiAgent`
+- `src/config/` - Configuration and settings
+- `src/models/` - Data models and validation
+- `src/agents/` - AI agent implementations
+- `src/database/` - Data access layer and repositories
+- `src/web_search/` - Web search implementation
+- `src/logging_config.py` - Logging setup
+- `services/` - Microservices (monitor, orchestrator, results, telegram)
+- Root level: `tabtouch_parser.py` (scraper), test scripts
+## Configuration
+- Pydantic BaseSettings for environment variables
+- Nested configuration classes (e.g., `TimingSettings`, `GeminiAgentSettings`, `GrokAgentSettings`)
+- SecretStr for sensitive values (API keys, tokens)
+- Fields with Field() for defaults and descriptions
+- Validators using `field_validator` decorator
+- Source timezone: `SOURCE_TIMEZONE` (Australia/Perth)
+- Client timezone: `CLIENT_TIMEZONE`
+- API keys: `OPENROUTER_API_KEY`, `TELEGRAM_BOT_TOKEN`
+- Database path: `DATABASE_PATH`
+- Redis connection: env vars for host, port, db, password
+<!-- GSD:conventions-end -->
+
+<!-- GSD:architecture-start source:ARCHITECTURE.md -->
+## Architecture
+
+## Pattern Overview
+- Five independent services communicating via Redis pub/sub
+- Each service handles single responsibility (monitor, analysis, results, notifications)
+- Shared database (SQLite) for persistence; Redis for temporary state and messaging
+- Async/await throughout for non-blocking I/O
+- Stateless services (state in Redis and database only)
+## Layers
+- Purpose: Scrape and monitor race data from TabTouch
+- Location: `tabtouch_parser.py`, `services/monitor/main.py`
+- Contains: Web scraper using Playwright, race timing/scheduling logic
+- Depends on: TabTouch website (via Playwright), Redis for pub/sub
+- Used by: Monitor service exclusively
+- Purpose: Generate betting predictions using multiple AI agents
+- Location: `src/agents/`, `services/orchestrator/main.py`
+- Contains: Research agent, Gemini agent, Grok agent, base agent implementations
+- Depends on: OpenRouter API, web search (SearXNG/DuckDuckGo), LangChain/LangGraph
+- Used by: Orchestrator service (triggered by Redis messages)
+- Purpose: Track race results and evaluate prediction accuracy
+- Location: `services/results/main.py`, `src/database/repositories.py`
+- Contains: Result checking, outcome evaluation, statistics calculation
+- Depends on: TabTouchParser, SQLite database, prediction data
+- Used by: Results service (scheduled via Redis)
+- Purpose: Send predictions and results to Telegram with interactive controls
+- Location: `services/telegram/main.py`, `services/telegram/callbacks.py`, `services/telegram/keyboards.py`
+- Contains: Telegram bot logic, inline keyboards, callback handlers, analytics charts
+- Depends on: aiogram library, database repositories, Redis for bot state
+- Used by: Telegram service (consuming Redis messages)
+- Purpose: Configuration, database access, logging, web search
+- Location: `src/config/`, `src/database/`, `src/logging_config.py`, `src/web_search/`
+- Contains: Settings management, repositories, logging, search engine abstractions
+- Depends on: Pydantic (settings), SQLite (database), LLM providers (OpenRouter)
+- Used by: All services
+## Data Flow
+- **Transient state (Redis):** `bot:enabled`, `bot:mode`, `bot:manual_races`, analyzed race URLs (24h TTL)
+- **Persistent state (SQLite):** Predictions, outcomes, agent statistics, agent configs
+- **Message bus (Redis pub/sub):** 5 channels for service communication
+## Key Abstractions
+- Purpose: Unified interface for web scraping and race data extraction
+- Examples: `tabtouch_parser.py`
+- Pattern: Context manager (async with parser) for browser lifecycle, timezone-aware datetime handling
+- Purpose: Encapsulate LLM interaction and structured output generation
+- Examples: `src/agents/base.py`, `src/agents/gemini_agent.py`, `src/agents/grok_agent.py`, `src/agents/research_agent.py`
+- Pattern: Base class with state machine (LangGraph), two-step workflow (research + analysis), research context sharing
+- Purpose: Multi-mode web search abstraction
+- Examples: `src/web_search/research_modes.py`, `src/web_search/searxng.py`, `src/web_search/duckduckgo.py`
+- Pattern: Strategy pattern for search engines (SearXNG vs DuckDuckGo), mode-based behavior (raw, lite, deep)
+- Purpose: Data access layer with clean query interfaces
+- Examples: `src/database/repositories.py`
+- Pattern: Repository pattern for predictions, outcomes, agents, statistics
+- Purpose: Type-safe bet representation with validation
+- Examples: `src/models/bets.py` (WinBet, PlaceBet, ExactaBet, TrifectaBet, QuinellaBet, etc.)
+- Pattern: Pydantic BaseModel with field validators, JSON serialization
+## Entry Points
+- Location: `services/monitor/main.py`
+- Triggers: Docker start (continuous loop)
+- Responsibilities: Poll TabTouch every 60s, detect upcoming races, publish analysis requests
+- Location: `services/orchestrator/main.py`
+- Triggers: Redis message on `race:ready_for_analysis` channel
+- Responsibilities: Run research and betting agents, persist predictions
+- Location: `services/results/main.py`
+- Triggers: Redis message on `race:schedule_result_check` channel
+- Responsibilities: Poll for race results, evaluate predictions, update statistics
+- Location: `services/telegram/main.py`
+- Triggers: Redis messages on `predictions:new`, `results:evaluated`, `races:digest`
+- Responsibilities: Format and send notifications, handle user interactions (commands, callbacks)
+- `test_agent.py` - Test single race with both agents
+- `show_next_races.py` - Show upcoming races (debugging)
+- `show_race_details.py` - Show detailed race info (debugging)
+## Error Handling
+- External API failures (OpenRouter, TabTouch) are logged and don't crash services
+- Database locks are retried with exponential backoff
+- Invalid race data is skipped; service continues monitoring
+- Missing predictions don't block results evaluation (evaluate what we have)
+- Telegram rate limiting (20 msg/sec) via async queue
+## Cross-Cutting Concerns
+<!-- GSD:architecture-end -->
+
+<!-- GSD:workflow-start source:GSD defaults -->
+## GSD Workflow Enforcement
+
+Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+
+Use these entry points:
+- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd:debug` for investigation and bug fixing
+- `/gsd:execute-phase` for planned phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+<!-- GSD:workflow-end -->
+
+<!-- GSD:profile-start -->
+## Developer Profile
+
+> Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
+> This section is managed by `generate-claude-profile` -- do not edit manually.
+<!-- GSD:profile-end -->
