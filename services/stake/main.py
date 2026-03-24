@@ -19,6 +19,8 @@ from aiogram.fsm.storage.redis import RedisStorage
 
 from services.stake.settings import get_stake_settings
 from services.stake.handlers.commands import router as commands_router
+from services.stake.handlers.pipeline import router as pipeline_router
+from services.stake.handlers.callbacks import router as callbacks_router
 from src.logging_config import setup_logging
 
 logger = setup_logging("stake")
@@ -46,9 +48,10 @@ async def main() -> None:
     )
     dp = Dispatcher(storage=storage)
 
-    # Register routers
+    # Register routers — order matters: callbacks before pipeline (pipeline has catch-all F.text)
     dp.include_router(commands_router)
-    # Pipeline router will be added in Plan 05
+    dp.include_router(callbacks_router)
+    dp.include_router(pipeline_router)  # Must be LAST (catches F.text)
 
     logger.info("Stake Racing Advisor bot starting...")
     await dp.start_polling(bot)
