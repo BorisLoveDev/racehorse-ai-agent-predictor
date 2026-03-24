@@ -15,8 +15,8 @@
 - [ ] **PARSE-02**: Parser is configurable — cheap model selection set via env/config (not hardcoded)
 - [ ] **PARSE-03**: During parse step, LLM also scans for any bankroll/balance mention in the pasted text
 - [ ] **PARSE-04**: Bot displays parsed summary to user for confirmation before proceeding to analysis
-- [ ] **PARSE-05**: Odds normalization sublayer converts all formats (decimal / fractional / American) to a single decimal internal representation; calculates raw implied probability and overround per market; validates place terms; covered by unit tests
-- [ ] **PARSE-06**: Each parsed runner has a `status` field (`active` | `scratched`); scratched runners are excluded from EV calculations and flagged in output
+- [x] **PARSE-05**: Odds normalization sublayer converts all formats (decimal / fractional / American) to a single decimal internal representation; calculates raw implied probability and overround per market; validates place terms; covered by unit tests
+- [x] **PARSE-06**: Each parsed runner has a `status` field (`active` | `scratched`); scratched runners are excluded from EV calculations and flagged in output
 
 ### Bankroll Management
 
