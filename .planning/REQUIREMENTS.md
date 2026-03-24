@@ -12,7 +12,7 @@
 - [ ] **INPUT-01**: User can paste raw Stake.com page text directly into Telegram chat
 - [ ] **INPUT-02**: User can send a .txt file with Stake.com race data
 - [ ] **PARSE-01**: Cheap LLM extracts structured race info from raw paste (runners, odds, track name, race time, surface/track condition, coverage/place terms)
-- [ ] **PARSE-02**: Parser is configurable — cheap model selection set via env/config (not hardcoded)
+- [x] **PARSE-02**: Parser is configurable — cheap model selection set via env/config (not hardcoded)
 - [ ] **PARSE-03**: During parse step, LLM also scans for any bankroll/balance mention in the pasted text
 - [ ] **PARSE-04**: Bot displays parsed summary to user for confirmation before proceeding to analysis
 - [x] **PARSE-05**: Odds normalization sublayer converts all formats (decimal / fractional / American) to a single decimal internal representation; calculates raw implied probability and overround per market; validates place terms; covered by unit tests
@@ -20,11 +20,11 @@
 
 ### Bankroll Management
 
-- [ ] **BANK-01**: Bankroll stored in SQLite (USDT), updated after each resolved bet result
+- [x] **BANK-01**: Bankroll stored in SQLite (USDT), updated after each resolved bet result
 - [ ] **BANK-02**: If bankroll found in pasted text during parse → triggers separate confirmation branch asking user to confirm/update
 - [ ] **BANK-03**: If no bankroll in text and no DB record → bot asks user explicitly before continuing
 - [ ] **BANK-04**: Current balance shown in header of every bot response
-- [ ] **BANK-05**: User can explicitly update balance: "balance: 150" or dedicated command
+- [x] **BANK-05**: User can explicitly update balance: "balance: 150" or dedicated command
 
 ### Web Research
 
@@ -54,7 +54,7 @@
 - [ ] **PIPELINE-01**: Pipeline runs step-by-step with progressive Telegram updates — user sees each step completing
 - [ ] **PIPELINE-02**: If any step's data is ambiguous, bot asks user clarifying question before continuing
 - [ ] **PIPELINE-03**: User can /cancel active pipeline at any time
-- [ ] **PIPELINE-04**: Pipeline state persists through bot restarts (RedisStorage FSM backend)
+- [x] **PIPELINE-04**: Pipeline state persists through bot restarts (RedisStorage FSM backend)
 - [ ] **PIPELINE-05**: Only one active pipeline session per user; duplicate paste triggers warning
 
 ### Audit Trail

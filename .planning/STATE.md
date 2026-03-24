@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-24T06:07:53.660Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-24T06:08:09.204Z"
 progress:
   total_phases: 3
   completed_phases: 0
@@ -47,6 +47,7 @@ Plan: 3 of 6
 
 *Updated after each plan completion*
 | Phase 01 P01 | 4 | 1 tasks | 8 files |
+| Phase 01 P02 | 4 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,8 @@ Recent decisions affecting current work:
 - [Phase 01]: to_decimal uses (fmt, odds_value) signature — format first for readability
 - [Phase 01]: recalculate_without_scratches raises ValueError for no active runners — fail-fast over silent empty
 - [Phase 01]: odds_drift_pct returns None (not 0.0) when inputs are None — unknown-vs-zero semantics
+- [Phase 01]: Nested Pydantic config classes extend BaseModel not BaseSettings — BaseSettings nested classes each try to load env vars independently, breaking env_nested_delimiter. BaseModel delegates to parent's prefix logic.
+- [Phase 01]: BankrollRepository.set_balance uses read-then-write to preserve stake_pct when only updating balance, avoiding partial ON CONFLICT complexity.
 
 ### Pending Todos
 
@@ -75,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T06:07:24.024Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-24T06:08:09.201Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None

@@ -32,11 +32,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. Bot always shows current USDT balance in every response header; balance persists across bot restarts; if no balance found in paste and none in DB, bot asks explicitly
   6. Every pipeline run writes a JSON-lines entry to the audit log covering: raw input, parsed output, and user confirmation/changes
   7. User can /cancel at any time; starting a new paste while pipeline is running triggers a duplicate warning
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 
 Plans:
 - [x] 01-01-PLAN.md — Pydantic models + deterministic odds math + pytest infrastructure
-- [ ] 01-02-PLAN.md — StakeSettings configuration + bankroll repository + SQLite migrations
+- [x] 01-02-PLAN.md — StakeSettings configuration + bankroll repository + SQLite migrations
 - [ ] 01-03-PLAN.md — LLM parser with structured output + extraction prompt
 - [ ] 01-04-PLAN.md — Telegram bot skeleton + FSM states + command handlers
 - [ ] 01-05-PLAN.md — Pipeline handlers + confirmation flow + bankroll flow + audit trail
@@ -80,6 +80,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and Parser | 1/6 | In Progress|  |
+| 1. Foundation and Parser | 2/6 | In Progress|  |
 | 2. EV Engine and Analysis | 0/TBD | Not started | - |
 | 3. Results, Reflection and Stats | 0/TBD | Not started | - |
