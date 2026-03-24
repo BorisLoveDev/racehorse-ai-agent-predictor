@@ -115,6 +115,20 @@ None - no external service configuration required. SQLite and pydantic-settings 
 - BankrollRepository ready for BANK-02 (auto-extraction from dialog), BET-01 (Kelly sizing)
 - stake_pipeline_runs table ready for pipeline run logging (PIPELINE-01 through PIPELINE-04)
 
+## Self-Check: PASSED
+
+All created files verified:
+- FOUND: services/stake/__init__.py
+- FOUND: services/stake/settings.py
+- FOUND: services/stake/bankroll/__init__.py
+- FOUND: services/stake/bankroll/migrations.py
+- FOUND: services/stake/bankroll/repository.py
+- FOUND: tests/stake/__init__.py
+- FOUND: tests/stake/test_settings.py
+- FOUND: tests/stake/test_bankroll.py
+
+All commits verified: 62057c9, 8b863f4, e763c7d, a8b9d10
+
 ---
 *Phase: 01-foundation-and-parser*
 *Completed: 2026-03-24*
