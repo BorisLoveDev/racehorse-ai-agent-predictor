@@ -142,6 +142,41 @@ services:
     networks:
       - racehorse-network
 
+  # Stake Racing Advisor Service
+  # WARNING (D-02): This service uses the SAME Telegram bot token as the 'telegram' service.
+  # You MUST stop the telegram service before starting stake:
+  #   docker compose stop telegram && docker compose up -d stake
+  # Running both simultaneously will cause webhook/polling conflicts.
+  stake:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: stake
+    container_name: racehorse-stake
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - STAKE_REDIS__URL=redis://redis:6379
+      - STAKE_DATABASE_PATH=/app/data/races.db
+      - STAKE_AUDIT__LOG_PATH=/app/data/stake_audit.jsonl
+      - STAKE_TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - STAKE_TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - STAKE_OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - STAKE_PARSER__MODEL=${STAKE_PARSER_MODEL:-google/gemini-2.0-flash-001}
+      - STAKE_PARSER__TEMPERATURE=${STAKE_PARSER_TEMPERATURE:-0.0}
+      - STAKE_PARSER__MAX_TOKENS=${STAKE_PARSER_MAX_TOKENS:-4000}
+    volumes:
+      - db_data:/app/data
+    restart: unless-stopped
+    networks:
+      - racehorse-network
+
 volumes:
   redis_data:
     driver: local
