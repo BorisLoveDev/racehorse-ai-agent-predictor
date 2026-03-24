@@ -21,8 +21,8 @@
 ### Bankroll Management
 
 - [x] **BANK-01**: Bankroll stored in SQLite (USDT), updated after each resolved bet result
-- [ ] **BANK-02**: If bankroll found in pasted text during parse → triggers separate confirmation branch asking user to confirm/update
-- [ ] **BANK-03**: If no bankroll in text and no DB record → bot asks user explicitly before continuing
+- [x] **BANK-02**: If bankroll found in pasted text during parse → triggers separate confirmation branch asking user to confirm/update
+- [x] **BANK-03**: If no bankroll in text and no DB record → bot asks user explicitly before continuing
 - [x] **BANK-04**: Current balance shown in header of every bot response
 - [x] **BANK-05**: User can explicitly update balance: "balance: 150" or dedicated command
 
@@ -51,15 +51,15 @@
 
 ### Pipeline UX
 
-- [ ] **PIPELINE-01**: Pipeline runs step-by-step with progressive Telegram updates — user sees each step completing
-- [ ] **PIPELINE-02**: If any step's data is ambiguous, bot asks user clarifying question before continuing
+- [x] **PIPELINE-01**: Pipeline runs step-by-step with progressive Telegram updates — user sees each step completing
+- [x] **PIPELINE-02**: If any step's data is ambiguous, bot asks user clarifying question before continuing
 - [x] **PIPELINE-03**: User can /cancel active pipeline at any time
 - [x] **PIPELINE-04**: Pipeline state persists through bot restarts (RedisStorage FSM backend)
 - [x] **PIPELINE-05**: Only one active pipeline session per user; duplicate paste triggers warning
 
 ### Audit Trail
 
-- [ ] **AUDIT-01**: Append-only log file records each pipeline run: raw input → parsed output → user confirmation/changes → recommendation → result (when submitted); stored as JSON lines on server
+- [x] **AUDIT-01**: Append-only log file records each pipeline run: raw input → parsed output → user confirmation/changes → recommendation → result (when submitted); stored as JSON lines on server
 
 ### Results
 
@@ -132,7 +132,7 @@ These are not features — they are implementation constraints that apply across
 | PARSE-01, PARSE-02, PARSE-03, PARSE-04, PARSE-05, PARSE-06 | Phase 1 | Pending |
 | BANK-01, BANK-02, BANK-03, BANK-04, BANK-05 | Phase 1 | Pending |
 | PIPELINE-01, PIPELINE-02, PIPELINE-03, PIPELINE-04, PIPELINE-05 | Phase 1 | Pending |
-| AUDIT-01 | Phase 1 | Pending |
+| AUDIT-01 | Phase 1 | Complete |
 | SEARCH-01, SEARCH-02 | Phase 2 | Pending |
 | ANALYSIS-01, ANALYSIS-02, ANALYSIS-03, ANALYSIS-04, ANALYSIS-05 | Phase 2 | Pending |
 | BET-01, BET-02, BET-03, BET-04, BET-05, BET-06, BET-07 | Phase 2 | Pending |

@@ -1,10 +1,11 @@
 services:
-  # SearXNG for web search (replaces Tavily)
+  # SearXNG for web search
+  # Used by: clawdbot (external, 95.142.41.188), future stake research phases
   searxng:
     image: searxng/searxng:latest
     container_name: racehorse-searxng
     ports:
-      - "8888:8080"  # External access for clawdbot (restricted by iptables to 95.142.41.188)
+      - "8888:8080"  # External access for clawdbot (restricted by iptables)
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -22,7 +23,7 @@ services:
     networks:
       - racehorse-network
 
-  # Redis for pub/sub messaging
+  # Redis — FSM state storage for Stake bot
   redis:
     image: redis:7-alpine
     container_name: racehorse-redis
@@ -38,115 +39,7 @@ services:
     networks:
       - racehorse-network
 
-  # Race Monitor Service
-  monitor:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: monitor
-    container_name: racehorse-monitor
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      - RACEHORSE_REDIS__HOST=redis
-      - RACEHORSE_REDIS__PORT=6379
-      - RACEHORSE_DATABASE__PATH=/app/data/races.db
-    volumes:
-      - db_data:/app/data
-      - race_data:/app/race_data
-    restart: unless-stopped
-    networks:
-      - racehorse-network
-
-  # Agent Orchestrator Service
-  orchestrator:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: orchestrator
-    container_name: racehorse-orchestrator
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    depends_on:
-      redis:
-        condition: service_healthy
-      searxng:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      - RACEHORSE_REDIS__HOST=redis
-      - RACEHORSE_REDIS__PORT=6379
-      - RACEHORSE_DATABASE__PATH=/app/data/races.db
-      - SEARXNG_URL=http://searxng:8080
-    volumes:
-      - db_data:/app/data
-    restart: unless-stopped
-    networks:
-      - racehorse-network
-
-  # Results Evaluation Service
-  results:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: results
-    container_name: racehorse-results
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      - RACEHORSE_REDIS__HOST=redis
-      - RACEHORSE_REDIS__PORT=6379
-      - RACEHORSE_DATABASE__PATH=/app/data/races.db
-    volumes:
-      - db_data:/app/data
-    restart: unless-stopped
-    networks:
-      - racehorse-network
-
-  # Telegram Notification Service
-  telegram:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: telegram
-    container_name: racehorse-telegram
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file:
-      - .env
-    environment:
-      - RACEHORSE_REDIS__HOST=redis
-      - RACEHORSE_REDIS__PORT=6379
-      - RACEHORSE_DATABASE__PATH=/app/data/races.db
-    volumes:
-      - db_data:/app/data
-    restart: unless-stopped
-    networks:
-      - racehorse-network
-
-  # Stake Racing Advisor Service
-  # WARNING (D-02): This service uses the SAME Telegram bot token as the 'telegram' service.
-  # You MUST stop the telegram service before starting stake:
-  #   docker compose stop telegram && docker compose up -d stake
-  # Running both simultaneously will cause webhook/polling conflicts.
+  # Stake Racing Advisor Bot
   stake:
     build:
       context: .
@@ -181,8 +74,6 @@ volumes:
   redis_data:
     driver: local
   db_data:
-    driver: local
-  race_data:
     driver: local
   searxng_data:
     driver: local

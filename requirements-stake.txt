@@ -1,0 +1,20 @@
+# Stake Racing Advisor — production dependencies
+# Slim set: no Playwright, no scraping, no charts
+
+# Pydantic and settings
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# LangChain (LLM parser + pipeline)
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langgraph>=0.0.20
+
+# Telegram bot
+aiogram>=3.4.0
+
+# Redis (FSM storage)
+redis>=5.0.0
+
+# HTTP (transitive dep of langchain, explicit for clarity)
+aiohttp>=3.9.0
