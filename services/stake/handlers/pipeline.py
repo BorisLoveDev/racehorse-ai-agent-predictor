@@ -92,10 +92,14 @@ async def _run_parse_pipeline(message: Message, state: FSMContext, raw_text: str
         audit.log_entry("parse_error", {"error": result["error"]})
         return
 
-    # Store pipeline result in FSM data
+    # Store pipeline result in FSM data (must be JSON-serializable for Redis)
     parsed_race = result.get("parsed_race")
+    serializable_result = {
+        k: (v.model_dump() if hasattr(v, "model_dump") else v)
+        for k, v in result.items()
+    }
     await state.update_data(
-        pipeline_result=result,
+        pipeline_result=serializable_result,
         parsed_race_json=parsed_race.model_dump_json() if parsed_race else None,
     )
 
