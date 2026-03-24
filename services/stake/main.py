@@ -13,8 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import redis.asyncio as aioredis
-from aiogram import Bot, Dispatcher
-from aiogram.types import ErrorEvent
+from aiogram import Bot, Dispatcher, BaseMiddleware
+from aiogram.types import ErrorEvent, Message, Update
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
@@ -53,6 +53,17 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher(storage=storage)
+
+    # Debug middleware — log ALL incoming updates
+    class DebugMiddleware(BaseMiddleware):
+        async def __call__(self, handler, event, data):
+            if isinstance(event, Message):
+                logger.info(f"[MIDDLEWARE] Message from {event.from_user.id}: text_len={len(event.text or '')} content_type={event.content_type}")
+            else:
+                logger.info(f"[MIDDLEWARE] Update type: {type(event).__name__}")
+            return await handler(event, data)
+
+    dp.message.middleware(DebugMiddleware())
 
     # Global error handler — catch ALL handler exceptions and log them
     @dp.errors()
