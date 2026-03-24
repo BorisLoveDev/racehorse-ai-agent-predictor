@@ -6,6 +6,7 @@ Registers all command and pipeline routers. Per D-01, D-02, PIPELINE-04.
 """
 
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import redis.asyncio as aioredis
 from aiogram import Bot, Dispatcher
+from aiogram.types import ErrorEvent
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
@@ -22,6 +24,10 @@ from services.stake.handlers.commands import router as commands_router
 from services.stake.handlers.pipeline import router as pipeline_router
 from services.stake.handlers.callbacks import router as callbacks_router
 from src.logging_config import setup_logging
+
+# Configure root logger so aiogram errors are visible
+logging.basicConfig(level=logging.INFO, stream=sys.stdout,
+                    format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s")
 
 logger = setup_logging("stake")
 
@@ -47,6 +53,11 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher(storage=storage)
+
+    # Global error handler — catch ALL handler exceptions and log them
+    @dp.errors()
+    async def on_error(event: ErrorEvent):
+        logger.error(f"Handler error: {event.exception}", exc_info=event.exception)
 
     # Register routers — order matters: callbacks before pipeline (pipeline has catch-all F.text)
     dp.include_router(commands_router)
