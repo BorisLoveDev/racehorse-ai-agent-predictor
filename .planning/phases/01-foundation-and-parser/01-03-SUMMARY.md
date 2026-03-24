@@ -130,6 +130,15 @@ None — parser is wired to real ChatOpenAI.with_structured_output(ParsedRace) u
 - Model configurable via `STAKE_PARSER__MODEL` env var
 - Tests require `pytest-asyncio` (now in requirements.txt and pytest.ini)
 
+## Self-Check: PASSED
+
+- FOUND: services/stake/parser/prompt.py
+- FOUND: services/stake/parser/llm_parser.py
+- FOUND: tests/stake/test_parser.py
+- FOUND: 01-03-SUMMARY.md
+- FOUND: commit 9c84e06
+- FOUND: commit f467cfb
+
 ---
 *Phase: 01-foundation-and-parser*
 *Completed: 2026-03-24*
