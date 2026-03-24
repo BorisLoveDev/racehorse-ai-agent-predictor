@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-03-24T06:15:59.435Z"
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-03-24T06:25:24.027Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -24,7 +24,7 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 01 (foundation-and-parser) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Plan: 5 of 6
 | Phase 01 P02 | 4 | 2 tasks | 8 files |
 | Phase 01 P04 | 8 | 2 tasks | 7 files |
 | Phase 01 P03 | 12 | 2 tasks | 5 files |
+| Phase 01 P05 | 5 | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 01]: bankroll_input_kb added beyond plan spec for Plan 05 awaiting_bankroll_input state handlers
 - [Phase 01]: PARSE_SYSTEM_PROMPT includes explicit odds conversion — LLM converts fractional/american to decimal, records original format in win_odds_format field
 - [Phase 01]: ChatOpenAI.with_structured_output chain built once in __init__ — not rebuilt per parse call to avoid overhead
+- [Phase 01]: Pipeline node returns partial update dict — LangGraph merges, preserving prior fields
+- [Phase 01]: ambiguous_fields uses string codes not human text — handlers map to user-facing questions dynamically
 
 ### Pending Todos
 
@@ -84,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T06:15:59.432Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-03-24T06:25:24.025Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
