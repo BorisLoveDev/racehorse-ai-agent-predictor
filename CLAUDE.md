@@ -52,12 +52,14 @@ Legacy TabTouch: `RACEHORSE_` prefix. See `docs/legacy-tabtouch.md`.
 
 ## AI Models (via OpenRouter)
 
-| Component | Model | Config Location |
-|-----------|-------|----------------|
-| Stake parser | google/gemini-2.0-flash-001 | `services/stake/settings.py` / `STAKE_PARSER__MODEL` |
-| Gemini agent (legacy) | google/gemini-3-flash-preview | `src/config/settings.py` / Coolify env |
-| Grok agent (legacy) | x-ai/grok-4.1-fast | `src/config/settings.py` / Coolify env |
-| Research agent (legacy) | google/gemini-3-flash-preview | `src/config/settings.py` / Coolify env |
+| Component | Model | Cost | Env Var |
+|-----------|-------|------|---------|
+| Parser (extraction) | gemini-3.1-flash-lite-preview | Cheap | `STAKE_PARSER__MODEL` |
+| Research (data gathering) | gemini-3.1-flash-lite-preview | Cheap | `STAKE_RESEARCH__MODEL` |
+| Analysis (aggregation) | gemini-3.1-pro-preview | Expensive | `STAKE_ANALYSIS__MODEL` |
+
+Config: `services/stake/settings.py` — ParserSettings, ResearchSettings, AnalysisSettings.
+Flash-lite: high-volume, low cost. Pro: use sparingly for final aggregation.
 
 ## Development
 

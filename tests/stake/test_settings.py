@@ -13,7 +13,7 @@ def test_default_parser_model():
     os.environ.pop("STAKE_PARSER__MODEL", None)
     from services.stake.settings import StakeSettings
     s = StakeSettings()
-    assert s.parser.model == "google/gemini-2.0-flash-001"
+    assert s.parser.model == "google/gemini-3.1-flash-lite-preview"
 
 
 def test_parser_model_env_override(monkeypatch):

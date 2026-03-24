@@ -16,11 +16,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ParserSettings(BaseModel):
-    """LLM parser configuration for extracting race data from raw Stake.com text."""
+    """LLM parser configuration for extracting race data from raw Stake.com text.
+
+    Uses cheap fast model (flash-lite) for high-volume parsing.
+    """
 
     model: str = Field(
-        default="google/gemini-2.0-flash-001",
-        description="OpenRouter model for parse step"
+        default="google/gemini-3.1-flash-lite-preview",
+        description="OpenRouter model for parse step (cheap, high-volume)"
     )
     temperature: float = Field(
         default=0.0,
@@ -29,6 +32,40 @@ class ParserSettings(BaseModel):
     max_tokens: int = Field(
         default=4000,
         description="Max tokens for parse response"
+    )
+
+
+class ResearchSettings(BaseModel):
+    """Research agent LLM config — cheap model for data gathering."""
+
+    model: str = Field(
+        default="google/gemini-3.1-flash-lite-preview",
+        description="OpenRouter model for research (cheap, high-volume)"
+    )
+    temperature: float = Field(
+        default=0.3,
+        description="LLM temperature for research"
+    )
+    max_tokens: int = Field(
+        default=4000,
+        description="Max tokens for research response"
+    )
+
+
+class AnalysisSettings(BaseModel):
+    """Analysis/aggregation LLM config — expensive model, use sparingly."""
+
+    model: str = Field(
+        default="google/gemini-3.1-pro-preview",
+        description="OpenRouter model for analysis aggregation (expensive, use sparingly)"
+    )
+    temperature: float = Field(
+        default=0.7,
+        description="LLM temperature for analysis"
+    )
+    max_tokens: int = Field(
+        default=8000,
+        description="Max tokens for analysis response"
     )
 
 
@@ -82,6 +119,8 @@ class StakeSettings(BaseSettings):
     )
 
     parser: ParserSettings = Field(default_factory=ParserSettings)
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
+    analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     bankroll: BankrollSettings = Field(default_factory=BankrollSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
