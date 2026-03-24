@@ -172,6 +172,8 @@ async def handle_paste(message: Message, state: FSMContext) -> None:
 
     Skips if the text looks like a command (starts with /).
     """
+    import logging
+    logging.getLogger("stake").info(f"handle_paste FIRED, state={await state.get_state()}, text_len={len(message.text or '')}")
     if message.text and message.text.startswith("/"):
         return
     await _run_parse_pipeline(message, state, message.text or "")
@@ -186,6 +188,8 @@ async def handle_paste_no_state(message: Message, state: FSMContext) -> None:
     For active pipeline state, shows PIPELINE-05 duplicate warning.
     Skips commands.
     """
+    import logging
+    logging.getLogger("stake").info(f"handle_paste_no_state FIRED, state={await state.get_state()}, text_len={len(message.text or '')}")
     if message.text and message.text.startswith("/"):
         return
 
