@@ -67,3 +67,7 @@ CMD ["python3", "services/results/main.py"]
 # Target: telegram
 FROM base AS telegram
 CMD ["python3", "services/telegram/main.py"]
+
+# Target: stake advisor
+FROM base AS stake
+CMD ["python3", "services/stake/main.py"]
