@@ -71,12 +71,14 @@ python -c "import ast; ast.parse(open('file.py').read())"  # syntax check
 
 ## Common Pitfalls
 
-- **Telegram 64-byte callback limit** — use short prefixes (`sc:`, `sb:`, `sm:`)
-- **Competing bot instances** — two polling clients with same token = random message loss. Always check `docker ps | grep bot` before deploy
-- **Coolify env vars** — `${TELEGRAM_BOT_TOKEN}` in docker-compose references Coolify UI vars, NOT .env. If empty in UI = empty in container
+- **Competing bot instances** — two polling clients with same token = silent message loss. Before deploy: `ssh meridian "docker ps | grep bot"`. Stop old apps via Coolify API
+- **Coolify env vars** — `${TELEGRAM_BOT_TOKEN}` in docker-compose refs Coolify UI vars, NOT .env. If empty in UI = empty in container. Check after first deploy
+- **Bot works in DM only** — chat_id is set for personal chat. Group support requires separate configuration
+- **Pydantic in Redis FSM** — Pydantic objects are NOT JSON-serializable. Always `model_dump()` before `state.update_data()`
+- **aiogram swallows errors** — always configure `logging.basicConfig()` + `@dp.errors()` handler, or exceptions are invisible in logs
 - **Pydantic nested settings** — nested classes MUST be `BaseModel`, not `BaseSettings`, for `env_nested_delimiter` to work
-- **aiogram swallows handler errors** — configure `logging.basicConfig()` and `@dp.errors()` handler, otherwise exceptions are invisible
-- **parse_mode=HTML** — bot uses HTML parse mode. Unescaped `<>` in messages will silently fail
+- **Telegram 64-byte callback limit** — use short prefixes (`sc:`, `sb:`, `sm:`)
+- **parse_mode=HTML** — unescaped `<>` in bot replies will silently fail
 
 ## Docs
 
