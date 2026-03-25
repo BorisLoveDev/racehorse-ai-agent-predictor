@@ -90,7 +90,7 @@ async def handle_parse_confirm(
                 f"{current_info}\n\n"
                 f"At current stake ({stake_pct*100:.1f}%), each bet would be "
                 f"~{stake_amount:.2f} USDT.\n"
-                f"To adjust: /stake <percent>\n\n"
+                f"To adjust: /stake 3\n\n"
                 "Use detected balance?",
                 reply_markup=bankroll_confirm_kb(),
             )

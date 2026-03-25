@@ -202,7 +202,7 @@ async def handle_bankroll_input(message: Message, state: FSMContext) -> None:
         await message.answer(
             f"Balance set to {amount:.2f} USDT.\n"
             f"Stake size: {stake_pct*100:.1f}% ({amount * stake_pct:.2f} USDT per bet)\n"
-            f"To adjust stake %: /stake <number>\n\n"
+            f"To adjust stake %: /stake 3\n\n"
             "Pipeline complete. Paste new race data when ready."
         )
     except ValueError:
