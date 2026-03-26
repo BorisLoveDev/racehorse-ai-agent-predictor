@@ -23,12 +23,12 @@ Race 4 - 1400m Turf
 Date: 26 Mar 2026
 
 Runners:
-1. Daglarkaya - Win: 81.00 - Place: 12.00 - Jockey: A. Kaya - Trainer: M. Demir - Form: 5-8-3-6
-2. Emir Ilyas - Win: 1.27 - Place: 1.05 - Jockey: B. Yilmaz - Trainer: S. Ozturk - Form: 1-1-2-1
-3. Ferman Yazar - Win: 5.75 - Place: 2.10 - Jockey: C. Arslan - Trainer: H. Aksoy - Form: 3-2-5-4
-4. Hep Birlikte - Win: 12.00 - Place: 3.50 - Jockey: D. Celik - Trainer: A. Kurt - Form: 4-6-7-2
-5. Simsekkiran - Win: 6.00 - Place: 2.20 - Jockey: E. Sahin - Trainer: T. Yildiz - Form: 2-3-1-5
-6. Kivilcim Atesi - Win: 26.00 - Place: 6.00 - Jockey: F. Dogan - Trainer: N. Acar - Form: 7-4-8-3
+1. Daglarkaya - Win: 21.00 - Place: 5.50 - Jockey: A. Kaya - Trainer: M. Demir - Form: 5-8-3-6
+2. Emir Ilyas - Win: 2.10 - Place: 1.35 - Jockey: B. Yilmaz - Trainer: S. Ozturk - Form: 1-1-2-1
+3. Ferman Yazar - Win: 5.50 - Place: 2.10 - Jockey: C. Arslan - Trainer: H. Aksoy - Form: 3-2-5-4
+4. Hep Birlikte - Win: 11.00 - Place: 3.20 - Jockey: D. Celik - Trainer: A. Kurt - Form: 4-6-7-2
+5. Simsekkiran - Win: 4.80 - Place: 1.95 - Jockey: E. Sahin - Trainer: T. Yildiz - Form: 2-3-1-5
+6. Kivilcim Atesi - Win: 15.00 - Place: 4.00 - Jockey: F. Dogan - Trainer: N. Acar - Form: 7-4-8-3
 
 Bet types: Win, Place
 
