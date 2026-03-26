@@ -56,11 +56,11 @@ Plans:
   5. Final output respects all sizing constraints: quarter-Kelly default, 3% per-bet hard cap, 5% total race exposure cap, max 2 win bets per race; when research data is sparse for a runner, sizing is halved and flagged
   6. If research finds significantly different odds for a runner in external sources, a market discrepancy note appears in the analysis output
   7. Audit log entry updated with recommendation data for this run
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 - [x] 02-01-PLAN.md — Pydantic models + PipelineState extension + SizingSettings
-- [ ] 02-02-PLAN.md — EV/Kelly math engine (TDD) + pre-skip check node
+- [x] 02-02-PLAN.md — EV/Kelly math engine (TDD) + pre-skip check node
 - [ ] 02-03-PLAN.md — Research tools + research agent + research node + prompts
 - [ ] 02-04-PLAN.md — Analysis node + sizing node + formatter + graph wiring + handler + audit
 
@@ -89,5 +89,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Parser | 5/6 | In Progress|  |
-| 2. EV Engine and Analysis | 1/4 | In Progress|  |
+| 2. EV Engine and Analysis | 2/4 | In Progress|  |
 | 3. Results, Reflection and Stats | 0/TBD | Not started | - |
