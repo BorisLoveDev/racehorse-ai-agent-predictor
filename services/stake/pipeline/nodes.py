@@ -79,13 +79,16 @@ async def parse_node(state: PipelineState) -> dict[str, Any]:
     # PIPELINE-02: detect ambiguous/incomplete fields
     ambiguous: list[str] = []
 
-    # Check runner count mismatch
+    # Check runner count mismatch (account for scratched runners)
     if (
         result.runner_count is not None
         and len(result.runners) > 0
-        and result.runner_count != len(result.runners)
     ):
-        ambiguous.append("runner_count_mismatch")
+        active_count = sum(1 for r in result.runners if r.status == "active")
+        total_count = len(result.runners)
+        # Mismatch if neither active nor total count matches the stated runner_count
+        if result.runner_count != total_count and result.runner_count != active_count:
+            ambiguous.append("runner_count_mismatch")
 
     # Check missing odds threshold (>30% of runners missing win_odds)
     if result.runners:

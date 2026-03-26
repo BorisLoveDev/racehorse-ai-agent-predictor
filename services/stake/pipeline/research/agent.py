@@ -111,10 +111,17 @@ def build_research_orchestrator(settings):
 # ---------------------------------------------------------------------------
 
 
+def _get(obj, key, default=None):
+    """Get attribute from Pydantic model or dict transparently."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 def _build_runners_context(state: PipelineState) -> str:
     """Build a human-readable race and runner summary for the orchestrator.
 
-    Includes track, race details, and per-runner name/number/jockey/trainer/form/odds.
+    Handles both Pydantic models and dicts (after Redis FSM serialization).
     """
     parsed_race = state.get("parsed_race")
     enriched_runners = state.get("enriched_runners") or []
@@ -124,20 +131,14 @@ def _build_runners_context(state: PipelineState) -> str:
     # Race header
     lines.append("=== RACE INFORMATION ===")
     if parsed_race:
-        if parsed_race.track:
-            lines.append(f"Track: {parsed_race.track}")
-        if parsed_race.race_number:
-            lines.append(f"Race: #{parsed_race.race_number}")
-        if parsed_race.race_name:
-            lines.append(f"Name: {parsed_race.race_name}")
-        if parsed_race.distance:
-            lines.append(f"Distance: {parsed_race.distance}")
-        if parsed_race.surface:
-            lines.append(f"Surface: {parsed_race.surface}")
-        if parsed_race.date:
-            lines.append(f"Date: {parsed_race.date}")
-        if parsed_race.place_terms:
-            lines.append(f"Place terms: {parsed_race.place_terms}")
+        for field, label in [
+            ("track", "Track"), ("race_number", "Race"), ("race_name", "Name"),
+            ("distance", "Distance"), ("surface", "Surface"), ("date", "Date"),
+            ("place_terms", "Place terms"),
+        ]:
+            val = _get(parsed_race, field)
+            if val:
+                lines.append(f"{label}: {val}")
 
     lines.append("")
     lines.append("=== RUNNERS ===")
@@ -162,19 +163,20 @@ def _build_runners_context(state: PipelineState) -> str:
             if runner.get("tips_text"):
                 parts.append(f"Tips: {runner['tips_text']}")
             lines.append(" | ".join(parts))
-    elif parsed_race and parsed_race.runners:
-        for runner in parsed_race.runners:
-            if runner.status == "scratched":
+    elif parsed_race:
+        runners_list = _get(parsed_race, "runners") or []
+        for runner in runners_list:
+            if _get(runner, "status") == "scratched":
                 continue
-            parts = [f"#{runner.number} {runner.name}"]
-            if runner.jockey:
-                parts.append(f"J: {runner.jockey}")
-            if runner.trainer:
-                parts.append(f"T: {runner.trainer}")
-            if runner.form_string:
-                parts.append(f"Form: {runner.form_string}")
-            if runner.win_odds:
-                parts.append(f"Odds: {runner.win_odds}")
+            parts = [f"#{_get(runner, 'number', '?')} {_get(runner, 'name', 'Unknown')}"]
+            if _get(runner, "jockey"):
+                parts.append(f"J: {_get(runner, 'jockey')}")
+            if _get(runner, "trainer"):
+                parts.append(f"T: {_get(runner, 'trainer')}")
+            if _get(runner, "form_string"):
+                parts.append(f"Form: {_get(runner, 'form_string')}")
+            if _get(runner, "win_odds"):
+                parts.append(f"Odds: {_get(runner, 'win_odds')}")
             lines.append(" | ".join(parts))
     else:
         lines.append("No runner data available.")
