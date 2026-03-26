@@ -28,6 +28,7 @@ from services.stake.handlers.commands import balance_header
 from services.stake.keyboards.stake_kb import bankroll_confirm_kb, bankroll_input_kb, skip_confirm_kb
 from services.stake.audit.logger import AuditLogger
 from services.stake.pipeline.graph import build_analysis_graph
+from services.stake.handlers.pipeline import _run_analysis_inline
 
 logger = logging.getLogger("stake")
 
@@ -289,6 +290,7 @@ async def handle_skip_decision(
     if callback_data.action == "continue":
         audit.log_entry("user_forced_continue_high_margin", {})
         data = await state.get_data()
-        await _run_analysis_pipeline(
-            callback, state, data, settings, force_continue=True
+        pipeline_result = data.get("pipeline_result", {})
+        await _run_analysis_inline(
+            callback.message, state, pipeline_result, header, audit, force_continue=True
         )

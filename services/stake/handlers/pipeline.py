@@ -24,12 +24,66 @@ from services.stake.settings import get_stake_settings
 from services.stake.handlers.commands import balance_header
 from services.stake.pipeline.graph import build_pipeline_graph, build_analysis_graph
 from services.stake.pipeline.formatter import format_race_summary
-from services.stake.keyboards.stake_kb import confirm_parse_kb, bankroll_confirm_kb, bankroll_input_kb
+from services.stake.keyboards.stake_kb import confirm_parse_kb, bankroll_confirm_kb, bankroll_input_kb, skip_confirm_kb
 from services.stake.bankroll.repository import BankrollRepository
 from services.stake.audit.logger import AuditLogger
 
 logger = logging.getLogger("stake")
 router = Router(name="pipeline")
+
+
+async def _run_analysis_inline(
+    message: Message,
+    state: FSMContext,
+    pipeline_result: dict,
+    header: str,
+    audit: AuditLogger,
+    force_continue: bool = False,
+) -> None:
+    """Run the Phase 2 analysis pipeline (research -> analysis -> sizing -> format).
+
+    Shared between bankroll input handler and skip-continue handler.
+    """
+    initial_state: dict = {
+        "parsed_race": pipeline_result.get("parsed_race"),
+        "enriched_runners": pipeline_result.get("enriched_runners") or [],
+        "overround_active": pipeline_result.get("overround_active"),
+        "overround_raw": pipeline_result.get("overround_raw"),
+        "ambiguous_fields": pipeline_result.get("ambiguous_fields") or [],
+        "skip_signal": False if force_continue else None,
+    }
+
+    await message.answer(f"{header}Running analysis...")
+
+    try:
+        analysis_graph = build_analysis_graph()
+        result = await analysis_graph.ainvoke(initial_state)
+
+        recommendation_text = result.get(
+            "recommendation_text",
+            "Analysis complete — no output generated."
+        )
+
+        await state.set_state(PipelineStates.idle)
+        await message.answer(
+            recommendation_text,
+            parse_mode="HTML",
+        )
+
+        audit.log_entry("recommendation", {
+            "final_bets": result.get("final_bets") or [],
+            "skip_signal": result.get("skip_signal", False),
+            "skip_reason": result.get("skip_reason"),
+            "skip_tier": result.get("skip_tier"),
+            "overround_active": pipeline_result.get("overround_active"),
+        })
+    except Exception as e:
+        logger.exception("Analysis pipeline error: %s", e)
+        await state.set_state(PipelineStates.idle)
+        await message.answer(
+            f"{header}Analysis error: {str(e)}\n\nPaste new race data when ready."
+        )
+        audit.log_entry("analysis_error", {"error": str(e)})
 
 
 async def _run_parse_pipeline(message: Message, state: FSMContext, raw_text: str) -> None:
@@ -199,53 +253,39 @@ async def handle_bankroll_input(message: Message, state: FSMContext) -> None:
 
         await message.answer(f"Balance set to {amount:.2f} USDT.")
 
-        # Now trigger Phase 2 analysis pipeline
+        # Check margin before running expensive pipeline
         data = await state.get_data()
         pipeline_result = data.get("pipeline_result", {})
 
-        if pipeline_result:
-            initial_state: dict = {
-                "parsed_race": pipeline_result.get("parsed_race"),
-                "enriched_runners": pipeline_result.get("enriched_runners") or [],
-                "overround_active": pipeline_result.get("overround_active"),
-                "overround_raw": pipeline_result.get("overround_raw"),
-                "ambiguous_fields": pipeline_result.get("ambiguous_fields") or [],
-            }
-
-            await message.answer(f"{header}Running analysis...")
-
-            try:
-                analysis_graph = build_analysis_graph()
-                result = await analysis_graph.ainvoke(initial_state)
-
-                recommendation_text = result.get(
-                    "recommendation_text",
-                    "Analysis complete — no output generated."
-                )
-
-                await state.set_state(PipelineStates.idle)
-                await message.answer(
-                    recommendation_text,
-                    parse_mode="HTML",
-                )
-
-                audit.log_entry("recommendation", {
-                    "final_bets": result.get("final_bets") or [],
-                    "skip_signal": result.get("skip_signal", False),
-                    "skip_reason": result.get("skip_reason"),
-                    "skip_tier": result.get("skip_tier"),
-                    "overround_active": pipeline_result.get("overround_active"),
-                })
-            except Exception as e:
-                logger.exception("Analysis pipeline error: %s", e)
-                await state.set_state(PipelineStates.idle)
-                await message.answer(
-                    f"{header}Analysis error: {str(e)}\n\nPaste new race data when ready."
-                )
-                audit.log_entry("analysis_error", {"error": str(e)})
-        else:
+        if not pipeline_result:
             await state.set_state(PipelineStates.idle)
             await message.answer("Paste new race data when ready.")
+            return
+
+        overround_active = pipeline_result.get("overround_active")
+        try:
+            threshold = float(settings.sizing.skip_overround_threshold)
+        except (TypeError, ValueError, AttributeError):
+            threshold = 15.0
+
+        if overround_active is not None:
+            margin_pct = (overround_active - 1.0) * 100.0
+            if margin_pct > threshold:
+                await state.set_state(PipelineStates.awaiting_skip_confirm)
+                await message.answer(
+                    f"{header}"
+                    f"<b>High margin detected: {margin_pct:.1f}%</b>\n\n"
+                    f"Bookmaker margin ({margin_pct:.1f}%) exceeds the {threshold:.0f}% threshold. "
+                    f"This means the book is heavily squeezed — finding +EV bets is unlikely.\n\n"
+                    f"Continuing will cost API credits for research and analysis "
+                    f"with low chance of finding a profitable bet.",
+                    parse_mode="HTML",
+                    reply_markup=skip_confirm_kb(),
+                )
+                return
+
+        # Margin OK — run analysis
+        await _run_analysis_inline(message, state, pipeline_result, header, audit)
     except ValueError:
         await message.answer(
             f"{header}"
