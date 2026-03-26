@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-stopped_at: "Checkpoint: Task 3 human-verify for 02-04-PLAN.md"
-last_updated: "2026-03-26T13:03:42.812Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 02-ev-engine-and-analysis 02-04-PLAN.md
+last_updated: "2026-03-26T13:15:14.207Z"
 progress:
   total_phases: 3
   completed_phases: 2
@@ -55,6 +55,7 @@ Plan: 4 of 4
 | Phase 02 P01 | 123 | 2 tasks | 5 files |
 | Phase 02 P02 | 2 | 1 tasks | 3 files |
 | Phase 02 P03 | 3 | 2 tasks | 6 files |
+| Phase 02-ev-engine-and-analysis P04 | 15 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,8 @@ Recent decisions affecting current work:
 - [Phase 02]: pre_skip_check_node uses strict > comparison for threshold — exactly-at-threshold races proceed
 - [Phase 02]: ResearchPlan/SearchQuery as internal Pydantic models for Phase 1 structured output — orchestrator plans into typed model before sub-agents execute
 - [Phase 02]: Three-phase research_node: plan (ResearchPlan) -> execute (sub-agents) -> synthesize (ResearchOutput) — two separate orchestrator LLM calls for clean typed outputs
+- [Phase 02-ev-engine-and-analysis]: ARCH-01 split: analysis_node calls LLM with pre-computed no-vig probabilities; sizing_node is pure Python — LLM never generates bet amounts
+- [Phase 02-ev-engine-and-analysis]: build_analysis_graph() is a separate compiled graph from build_pipeline_graph() — parse and analysis pipelines are independent, chained via FSM state
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T13:03:42.808Z
-Stopped at: Checkpoint: Task 3 human-verify for 02-04-PLAN.md
+Last session: 2026-03-26T13:15:14.204Z
+Stopped at: Completed 02-ev-engine-and-analysis 02-04-PLAN.md
 Resume file: None
