@@ -21,11 +21,11 @@ from aiogram.types import CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from services.stake.states import PipelineStates
-from services.stake.callbacks import ConfirmCB, BankrollCB
+from services.stake.callbacks import ConfirmCB, BankrollCB, SkipCB
 from services.stake.settings import get_stake_settings
 from services.stake.bankroll.repository import BankrollRepository
 from services.stake.handlers.commands import balance_header
-from services.stake.keyboards.stake_kb import bankroll_confirm_kb, bankroll_input_kb
+from services.stake.keyboards.stake_kb import bankroll_confirm_kb, bankroll_input_kb, skip_confirm_kb
 from services.stake.audit.logger import AuditLogger
 from services.stake.pipeline.graph import build_analysis_graph
 
@@ -39,6 +39,7 @@ async def _run_analysis_pipeline(
     state: FSMContext,
     fsm_data: dict,
     settings,
+    force_continue: bool = False,
 ) -> None:
     """Run the Phase 2 analysis pipeline after race confirmation.
 
@@ -57,28 +58,47 @@ async def _run_analysis_pipeline(
     audit = AuditLogger()
     header = balance_header(settings.database_path)
 
-    # Progressive update: let user know analysis is starting
-    await callback.message.answer(
-        f"{header}Race confirmed. Running analysis..."
-    )
-
     # Build initial state from stored parse results
     pipeline_result = fsm_data.get("pipeline_result", {})
+    overround_active = pipeline_result.get("overround_active")
+
+    # Check margin BEFORE running expensive pipeline — ask user if too high
+    try:
+        threshold = float(settings.sizing.skip_overround_threshold)
+    except (TypeError, ValueError, AttributeError):
+        threshold = 15.0
+    if overround_active is not None and not force_continue:
+        margin_pct = (overround_active - 1.0) * 100.0
+        if margin_pct > threshold:
+            await state.set_state(PipelineStates.awaiting_skip_confirm)
+            await callback.message.answer(
+                f"{header}"
+                f"<b>High margin detected: {margin_pct:.1f}%</b>\n\n"
+                f"Bookmaker margin ({margin_pct:.1f}%) exceeds the {threshold:.0f}% threshold. "
+                f"This means the book is heavily squeezed — finding +EV bets is unlikely.\n\n"
+                f"Continuing will cost API credits for research and analysis "
+                f"with low chance of finding a profitable bet.",
+                parse_mode="HTML",
+                reply_markup=skip_confirm_kb(),
+            )
+            return
+
+    # Progressive update: let user know analysis is starting
+    await callback.message.answer(
+        f"{header}Running analysis..."
+    )
 
     initial_state: dict = {
         "parsed_race": pipeline_result.get("parsed_race"),
         "enriched_runners": pipeline_result.get("enriched_runners") or [],
-        "overround_active": pipeline_result.get("overround_active"),
+        "overround_active": overround_active,
         "overround_raw": pipeline_result.get("overround_raw"),
         "ambiguous_fields": pipeline_result.get("ambiguous_fields") or [],
+        # If user forced continue past margin check, disable Tier 1 skip in pipeline
+        "skip_signal": False if force_continue else None,
     }
 
     try:
-        # Send progressive updates
-        await callback.message.answer(
-            f"{header}Checking margins..."
-        )
-
         analysis_graph = build_analysis_graph()
         result = await analysis_graph.ainvoke(initial_state)
 
@@ -237,4 +257,38 @@ async def handle_bankroll_action(
             f"{header}"
             "Enter your current USDT balance:",
             reply_markup=bankroll_input_kb(),
+        )
+
+
+@router.callback_query(SkipCB.filter())
+async def handle_skip_decision(
+    callback: CallbackQuery,
+    callback_data: SkipCB,
+    state: FSMContext,
+) -> None:
+    """Handle user's decision on high-margin skip.
+
+    When bookmaker margin exceeds threshold, user chooses:
+        "continue" — run analysis anyway (force_continue=True bypasses Tier 1 skip)
+        "skip" — skip race, return to idle
+    """
+    settings = get_stake_settings()
+    header = balance_header(settings.database_path)
+    audit = AuditLogger()
+
+    await callback.answer()
+
+    if callback_data.action == "skip":
+        await state.set_state(PipelineStates.idle)
+        audit.log_entry("user_skipped_high_margin", {})
+        await callback.message.answer(
+            f"{header}Race skipped. Paste new race data when ready."
+        )
+        return
+
+    if callback_data.action == "continue":
+        audit.log_entry("user_forced_continue_high_margin", {})
+        data = await state.get_data()
+        await _run_analysis_pipeline(
+            callback, state, data, settings, force_continue=True
         )

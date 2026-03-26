@@ -8,7 +8,7 @@ InlineKeyboardBuilder from aiogram.
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from services.stake.callbacks import ConfirmCB, BankrollCB, MenuCB
+from services.stake.callbacks import ConfirmCB, BankrollCB, MenuCB, SkipCB
 
 
 def confirm_parse_kb() -> InlineKeyboardMarkup:
@@ -44,6 +44,18 @@ def bankroll_input_kb() -> InlineKeyboardMarkup:
     """
     builder = InlineKeyboardBuilder()
     builder.button(text="Cancel", callback_data=BankrollCB(action="no"))
+    return builder.as_markup()
+
+
+def skip_confirm_kb() -> InlineKeyboardMarkup:
+    """Continue or skip when bookmaker margin is too high.
+
+    Shown when pre-analysis check detects high overround.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Continue Anyway", callback_data=SkipCB(action="continue"))
+    builder.button(text="Skip Race", callback_data=SkipCB(action="skip"))
+    builder.adjust(2)
     return builder.as_markup()
 
 

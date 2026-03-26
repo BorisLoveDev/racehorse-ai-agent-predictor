@@ -32,7 +32,7 @@ Extract data into the following fields exactly. Return ONLY a JSON object matchi
 ### Per-Runner Fields (D-07) — extract for each runner
 
 For each runner in the race, extract:
-- number: integer — Runner/saddle cloth number. REQUIRED.
+- number: integer — Runner's saddle cloth / barrier number. REQUIRED. On Stake.com this is typically shown in parentheses after the horse name (e.g. "1. Quick Quasar (9)" means number=9, NOT 1). The number before the name is just the display position — ignore it. Use the number in parentheses as the runner number. If no parenthetical number exists, use the display position.
 - name: string — Horse name. REQUIRED.
 - barrier: integer or null — Barrier/gate/draw number. null if not shown.
 - weight: string or null — Weight carried (e.g. "58.5kg", "9-2"). null if not shown.

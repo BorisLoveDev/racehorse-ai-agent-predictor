@@ -26,6 +26,15 @@ class BankrollCB(CallbackData, prefix="sb"):
     action: str  # "yes" | "no" | "set"
 
 
+class SkipCB(CallbackData, prefix="ss"):
+    """Skip confirmation callback. Example: 'ss:skip' = 7 bytes.
+
+    Used when bookmaker margin is too high — user chooses to skip or continue.
+    """
+
+    action: str  # "skip" | "continue"
+
+
 class MenuCB(CallbackData, prefix="sm"):
     """Main menu actions callback. Example: 'sm:help' = 7 bytes.
 

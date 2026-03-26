@@ -253,14 +253,18 @@ async def test_confirm_with_db_bankroll_transitions_to_idle():
     with patch("services.stake.handlers.callbacks.get_stake_settings") as mock_settings, \
          patch("services.stake.handlers.callbacks.BankrollRepository") as mock_repo_cls, \
          patch("services.stake.handlers.callbacks.AuditLogger") as mock_audit_cls, \
-         patch("services.stake.handlers.callbacks.balance_header", return_value=""):
+         patch("services.stake.handlers.callbacks.balance_header", return_value=""), \
+         patch("services.stake.handlers.callbacks.build_analysis_graph") as mock_graph:
 
         mock_settings.return_value.database_path = ":memory:"
+        mock_settings.return_value.sizing.skip_overround_threshold = 15.0
         mock_repo = MagicMock()
         mock_repo.get_balance = MagicMock(return_value=200.0)  # Has balance in DB
-        mock_repo.get_stake_pct = MagicMock(return_value=0.02)
         mock_repo_cls.return_value = mock_repo
         mock_audit_cls.return_value = MagicMock(log_entry=MagicMock())
+        compiled = MagicMock()
+        compiled.ainvoke = AsyncMock(return_value={"recommendation_text": "test", "skip_signal": False})
+        mock_graph.return_value = compiled
 
         await handle_parse_confirm(callback, callback_data, state)
 

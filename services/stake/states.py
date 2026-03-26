@@ -22,4 +22,5 @@ class PipelineStates(StatesGroup):
     awaiting_clarification = State()      # PIPELINE-02: ambiguous data, asking user for clarification
     awaiting_bankroll_confirm = State()   # Balance found in paste, confirm
     awaiting_bankroll_input = State()     # No balance anywhere, user must enter
+    awaiting_skip_confirm = State()       # High margin detected, user decides skip or continue
     processing = State()                  # Pipeline running (future phases)
