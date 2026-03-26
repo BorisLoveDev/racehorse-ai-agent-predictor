@@ -56,7 +56,15 @@ Plans:
   5. Final output respects all sizing constraints: quarter-Kelly default, 3% per-bet hard cap, 5% total race exposure cap, max 2 win bets per race; when research data is sparse for a runner, sizing is halved and flagged
   6. If research finds significantly different odds for a runner in external sources, a market discrepancy note appears in the analysis output
   7. Audit log entry updated with recommendation data for this run
-**Plans**: TBD
+**Plans:** 4 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Pydantic models + PipelineState extension + SizingSettings
+- [ ] 02-02-PLAN.md — EV/Kelly math engine (TDD) + pre-skip check node
+- [ ] 02-03-PLAN.md — Research tools + research agent + research node + prompts
+- [ ] 02-04-PLAN.md — Analysis node + sizing node + formatter + graph wiring + handler + audit
+
+**UI hint**: yes
 
 ### Phase 3: Results, Reflection and Stats
 **Goal**: User can submit a race result back to the bot; the system evaluates every recommended bet (distinguishing placed from tracked), updates P&L, writes a memory-distilled AI reflection, makes statistics visible on demand, and activates a drawdown circuit breaker if the bank drops 20% from peak.
@@ -69,17 +77,17 @@ Plans:
   4. AI reflection entry written to `mindset.md` after each result — must include what went wrong even in winning bets; immediately followed by extraction of one structured lesson (error tag + rule sentence) appended to the lessons store
   5. Next race's analysis prompt receives top-5 extracted rules + last 3 failure modes — not raw reflection text
   6. User can request P&L stats (total, by period, win rate, ROI) for `placed` bets at any time
-  7. If bankroll drops ≥20% from its recorded peak, all subsequent recommendations are automatically issued as "SKIP (drawdown protection)" until user explicitly unlocks
+  7. If bankroll drops >=20% from its recorded peak, all subsequent recommendations are automatically issued as "SKIP (drawdown protection)" until user explicitly unlocks
   8. Audit log entry updated with result and P&L for this run
 **Plans**: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3
+Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Parser | 5/6 | In Progress|  |
-| 2. EV Engine and Analysis | 0/TBD | Not started | - |
+| 2. EV Engine and Analysis | 0/4 | Planned | - |
 | 3. Results, Reflection and Stats | 0/TBD | Not started | - |
