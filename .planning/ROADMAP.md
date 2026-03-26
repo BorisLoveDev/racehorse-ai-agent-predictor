@@ -61,7 +61,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — Pydantic models + PipelineState extension + SizingSettings
 - [x] 02-02-PLAN.md — EV/Kelly math engine (TDD) + pre-skip check node
-- [ ] 02-03-PLAN.md — Research tools + research agent + research node + prompts
+- [x] 02-03-PLAN.md — Research tools + research agent + research node + prompts
 - [ ] 02-04-PLAN.md — Analysis node + sizing node + formatter + graph wiring + handler + audit
 
 **UI hint**: yes

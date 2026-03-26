@@ -28,7 +28,7 @@
 
 ### Web Research
 
-- [ ] **SEARCH-01**: Web research step searches for each runner's form, trainer stats, expert opinions, recent race history
+- [x] **SEARCH-01**: Web research step searches for each runner's form, trainer stats, expert opinions, recent race history
 - [x] **SEARCH-02**: Search provider configurable: SearXNG (default) or OpenRouter online model — via env var
 
 ### Analysis
