@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Ready to execute
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-25T12:12:18.258Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-26T12:49:57.792Z"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 10
+  completed_plans: 7
 ---
 
 # Project State
@@ -19,12 +19,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** Given raw Stake.com race data, produce mathematically sound bet recommendations — sized relative to bankroll — or advise to skip when the odds are squeezed.
-**Current focus:** Phase 01 — foundation-and-parser
+**Current focus:** Phase 02 — ev-engine-and-analysis
 
 ## Current Position
 
-Phase: 01 (foundation-and-parser) — EXECUTING
-Plan: 6 of 6
+Phase: 02 (ev-engine-and-analysis) — EXECUTING
+Plan: 2 of 4
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Plan: 6 of 6
 | Phase 01 P03 | 12 | 2 tasks | 5 files |
 | Phase 01 P05 | 5 | 3 tasks | 11 files |
 | Phase 01 P06 | 5 | 1 tasks | 3 files |
+| Phase 02 P01 | 123 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 01]: ChatOpenAI.with_structured_output chain built once in __init__ — not rebuilt per parse call to avoid overhead
 - [Phase 01]: Pipeline node returns partial update dict — LangGraph merges, preserving prior fields
 - [Phase 01]: ambiguous_fields uses string codes not human text — handlers map to user-facing questions dynamically
+- [Phase 02]: TypedDict uses dict fields (not Pydantic models) for research_results, analysis_result, final_bets — Redis FSM requires JSON-serialisable types; model_dump() at write, model_validate() at read
+- [Phase 02]: SizingSettings extends BaseModel (not BaseSettings) — consistent with Phase 1 pattern to avoid env loading issues with nested BaseSettings
+- [Phase 02]: ResearchSettings.provider defaults to 'online' (OpenRouter) not 'searxng' — simpler dependency, no local server needed for development
 
 ### Pending Todos
 
@@ -88,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-25T12:12:18.248Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-ev-engine-and-analysis/02-CONTEXT.md
+Last session: 2026-03-26T12:49:57.789Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None

@@ -29,24 +29,24 @@
 ### Web Research
 
 - [ ] **SEARCH-01**: Web research step searches for each runner's form, trainer stats, expert opinions, recent race history
-- [ ] **SEARCH-02**: Search provider configurable: SearXNG (default) or OpenRouter online model — via env var
+- [x] **SEARCH-02**: Search provider configurable: SearXNG (default) or OpenRouter online model — via env var
 
 ### Analysis
 
-- [ ] **ANALYSIS-01**: AI produces structured analysis using betting-relevant labels per runner: `highest_win_probability`, `best_value` (max edge vs market), `best_place_candidate`, `no_bet` — not narrative labels like "favorite" or "dark horse"
+- [x] **ANALYSIS-01**: AI produces structured analysis using betting-relevant labels per runner: `highest_win_probability`, `best_value` (max edge vs market), `best_place_candidate`, `no_bet` — not narrative labels like "favorite" or "dark horse"
 - [ ] **ANALYSIS-02**: Overround/margin calculated from parsed odds; no-vig (fair) probability derived for each runner (deterministic Python, not LLM)
 - [ ] **ANALYSIS-03**: EV calculated using AI probability vs no-vig probability (not vs raw implied probability) (deterministic Python, not LLM)
-- [ ] **ANALYSIS-04**: If research returns sparse data for a runner (no recent form, no trainer info, contradictory sources) — bot applies 50% uncertainty discount to recommended sizing for that runner; flagged in output
-- [ ] **ANALYSIS-05**: If research finds significantly different odds for the same runner in external sources — bot includes a market discrepancy note in the analysis output
+- [x] **ANALYSIS-04**: If research returns sparse data for a runner (no recent form, no trainer info, contradictory sources) — bot applies 50% uncertainty discount to recommended sizing for that runner; flagged in output
+- [x] **ANALYSIS-05**: If research finds significantly different odds for the same runner in external sources — bot includes a market discrepancy note in the analysis output
 
 ### Bet Sizing & Recommendations
 
 - [ ] **BET-01**: All EV, Kelly fraction, and USDT sizing calculations performed by deterministic Python functions — LLM receives computed numbers, never generates final bet amounts from text
-- [ ] **BET-02**: Bet sizing uses Kelly criterion; default fraction = quarter Kelly (0.25×); configurable via env
-- [ ] **BET-03**: Hard cap per single bet: never recommend more than 3% of bankroll regardless of Kelly output
-- [ ] **BET-04**: Max total exposure per race: sum of all recommended bets capped at 5% of bankroll; max 2 win bets per single race
-- [ ] **BET-05**: Skip signal issued when bookmaker margin makes bet structurally -EV (configurable threshold, default >15% overround)
-- [ ] **BET-06**: Final output shows exact USDT amounts per bet type (win, place, exacta as applicable)
+- [x] **BET-02**: Bet sizing uses Kelly criterion; default fraction = quarter Kelly (0.25×); configurable via env
+- [x] **BET-03**: Hard cap per single bet: never recommend more than 3% of bankroll regardless of Kelly output
+- [x] **BET-04**: Max total exposure per race: sum of all recommended bets capped at 5% of bankroll; max 2 win bets per single race
+- [x] **BET-05**: Skip signal issued when bookmaker margin makes bet structurally -EV (configurable threshold, default >15% overround)
+- [x] **BET-06**: Final output shows exact USDT amounts per bet type (win, place, exacta as applicable)
 - [ ] **BET-07**: Place bet payout calculated using correct terms extracted from parse (not assumed as win odds)
 
 ### Pipeline UX
