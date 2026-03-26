@@ -310,6 +310,8 @@ async def research_node(state: PipelineState) -> dict:
         }
 
     except Exception as e:
+        import logging
+        logging.getLogger("stake").exception("Research node error: %s", e)
         return {
             "research_results": None,
             "research_error": str(e),

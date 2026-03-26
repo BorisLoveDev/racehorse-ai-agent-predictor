@@ -654,5 +654,11 @@ def format_recommendation_node(state: PipelineState) -> dict[str, Any]:
     Returns:
         {"recommendation_text": str} — always set.
     """
+    # Handle error state — show error message instead of recommendations
+    error = state.get("error")
+    if error:
+        text = f"<b>Analysis Error</b>\n\n{html.escape(str(error))}"
+        return {"recommendation_text": text}
+
     text = format_recommendation(dict(state))
     return {"recommendation_text": text}

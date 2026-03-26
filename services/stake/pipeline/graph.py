@@ -158,22 +158,22 @@ def build_analysis_graph():
         },
     )
 
-    # After research: error -> END; continue -> analysis
+    # After research: error -> format_recommendation (show error); continue -> analysis
     graph.add_conditional_edges(
         "research",
         research_error_router,
         {
-            "error": END,
+            "error": "format_recommendation",
             "continue": "analysis",
         },
     )
 
-    # After analysis: error -> END; continue -> sizing
+    # After analysis: error -> format_recommendation (show error); continue -> sizing
     graph.add_conditional_edges(
         "analysis",
         analysis_error_router,
         {
-            "error": END,
+            "error": "format_recommendation",
             "continue": "sizing",
         },
     )
