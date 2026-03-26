@@ -25,14 +25,15 @@ def confirm_parse_kb() -> InlineKeyboardMarkup:
 
 
 def bankroll_confirm_kb() -> InlineKeyboardMarkup:
-    """Confirm detected bankroll or set a different amount.
+    """Confirm detected bankroll, keep current, or set different.
 
     Shown when a balance amount is detected in the pasted race text.
+    Three options: use detected, keep current balance, or enter manually.
     """
     builder = InlineKeyboardBuilder()
-    builder.button(text="Confirm", callback_data=BankrollCB(action="yes"))
+    builder.button(text="Use Detected", callback_data=BankrollCB(action="yes"))
+    builder.button(text="Keep Current", callback_data=BankrollCB(action="keep"))
     builder.button(text="Set Different", callback_data=BankrollCB(action="set"))
-    builder.button(text="Cancel", callback_data=BankrollCB(action="no"))
     builder.adjust(2, 1)
     return builder.as_markup()
 

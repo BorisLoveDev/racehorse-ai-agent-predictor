@@ -251,6 +251,12 @@ async def handle_bankroll_action(
         # Trigger Phase 2 analysis pipeline now that bankroll is confirmed
         await _run_analysis_pipeline(callback, state, data, settings)
 
+    if callback_data.action == "keep":
+        # Keep current balance, proceed directly to analysis
+        data = await state.get_data()
+        audit.log_entry("bankroll_kept", {"source": "user_kept_current"})
+        await _run_analysis_pipeline(callback, state, data, settings)
+
     if callback_data.action == "set":
         header = balance_header(settings.database_path)
         await state.set_state(PipelineStates.awaiting_bankroll_input)

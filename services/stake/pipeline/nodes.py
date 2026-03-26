@@ -208,6 +208,10 @@ def pre_skip_check_node(state: PipelineState) -> dict[str, Any]:
         - {"skip_signal": False} if overround is within acceptable range
         - {} if overround_active is not available (no decision made)
     """
+    # If skip_signal is explicitly False, user chose to continue past margin check
+    if state.get("skip_signal") is False:
+        return {}
+
     overround_active = state.get("overround_active")
     if overround_active is None:
         return {}
