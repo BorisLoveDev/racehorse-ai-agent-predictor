@@ -20,6 +20,7 @@ from services.stake.parser.math import (
     odds_drift_pct,
 )
 from services.stake.pipeline.state import PipelineState
+from services.stake.settings import get_stake_settings
 
 
 async def parse_node(state: PipelineState) -> dict[str, Any]:
@@ -159,3 +160,42 @@ def calc_node(state: PipelineState) -> dict[str, Any]:
         "overround_raw": overround_raw,
         "overround_active": overround_active,
     }
+
+
+def pre_skip_check_node(state: PipelineState) -> dict[str, Any]:
+    """Pre-analysis skip check based on bookmaker overround margin.
+
+    Implements D-06: if the bookmaker margin is too high, the race is
+    flagged to skip before expensive LLM research/analysis steps run.
+    This saves API costs on races where the book is heavily squeezed.
+
+    Tier 1 skip: overround margin > skip_overround_threshold (default 15%).
+
+    Args:
+        state: PipelineState with overround_active populated by calc_node.
+
+    Returns:
+        Partial state update dict:
+        - {"skip_signal": True, "skip_reason": str, "skip_tier": 1} if skip triggered
+        - {"skip_signal": False} if overround is within acceptable range
+        - {} if overround_active is not available (no decision made)
+    """
+    overround_active = state.get("overround_active")
+    if overround_active is None:
+        return {}
+
+    settings = get_stake_settings()
+    threshold = settings.sizing.skip_overround_threshold
+    margin_pct = (overround_active - 1.0) * 100.0
+
+    if margin_pct > threshold:
+        return {
+            "skip_signal": True,
+            "skip_reason": (
+                f"Bookmaker margin {margin_pct:.1f}% exceeds threshold {threshold:.1f}% "
+                f"— race not worth analysing (overround {overround_active:.4f})"
+            ),
+            "skip_tier": 1,
+        }
+
+    return {"skip_signal": False}
