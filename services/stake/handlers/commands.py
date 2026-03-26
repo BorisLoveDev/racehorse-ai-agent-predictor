@@ -37,9 +37,8 @@ def balance_header(db_path: str) -> str:
     """
     repo = BankrollRepository(db_path=db_path)
     balance = repo.get_balance()
-    stake_pct = repo.get_stake_pct()
     if balance is not None:
-        return f"Balance: {balance:.2f} USDT | Stake: {stake_pct * 100:.0f}%\n{'─' * 30}\n"
+        return f"Balance: {balance:.2f} USDT\n{'─' * 30}\n"
     return f"Balance: not set\n{'─' * 30}\n"
 
 
@@ -133,13 +132,11 @@ async def cmd_balance(message: Message) -> None:
         return
 
     balance = repo.get_balance()
-    stake_pct = repo.get_stake_pct()
     if balance is not None:
         await message.answer(
-            f"Current balance: {balance:.2f} USDT\n"
-            f"Stake size: {stake_pct * 100:.0f}% ({balance * stake_pct:.2f} USDT per bet)\n\n"
+            f"Current balance: {balance:.2f} USDT\n\n"
             "To update: /balance 150\n"
-            "To change stake %: /stake 3"
+            "Bet sizing is automatic (Kelly criterion)."
         )
     else:
         await message.answer(

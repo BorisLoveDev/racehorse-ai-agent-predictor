@@ -158,14 +158,11 @@ async def handle_parse_confirm(
 
         repo = BankrollRepository(db_path=settings.database_path)
         current_balance = repo.get_balance()
-        stake_pct = repo.get_stake_pct()
 
         if detected_bankroll is not None:
             # BANK-02 / D-11: bankroll found in paste — ask to confirm
-            # D-16: include stake % guidance in confirmation message
             await state.set_state(PipelineStates.awaiting_bankroll_confirm)
             await state.update_data(detected_bankroll=detected_bankroll)
-            stake_amount = detected_bankroll * stake_pct
             current_info = (
                 f"Current balance: {current_balance:.2f} USDT"
                 if current_balance is not None
@@ -175,9 +172,6 @@ async def handle_parse_confirm(
                 f"{header}"
                 f"Detected balance in paste: <b>{detected_bankroll:.2f} USDT</b>\n"
                 f"{current_info}\n\n"
-                f"At current stake ({stake_pct*100:.1f}%), each bet would be "
-                f"~{stake_amount:.2f} USDT.\n"
-                f"To adjust: /stake 3\n\n"
                 "Use detected balance?",
                 reply_markup=bankroll_confirm_kb(),
             )
