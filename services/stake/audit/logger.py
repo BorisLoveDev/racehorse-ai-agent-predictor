@@ -16,6 +16,9 @@ Events logged:
     clarification_asked  — ambiguous_fields list and question strings
     clarification_received — user's clarification response text
     bankroll_set         — balance amount and source ("paste_detected" or "manual_input")
+    recommendation       — final_bets, skip_signal, skip_reason, skip_tier, analysis_summary,
+                           overround_active (D-16: recommendation data for this run)
+    analysis_error       — error message if Phase 2 analysis pipeline fails
 
 Exported:
     AuditLogger

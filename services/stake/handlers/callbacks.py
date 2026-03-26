@@ -10,6 +10,7 @@ Handlers:
     handle_bankroll_action — BankrollCB: user confirms, changes, or cancels bankroll
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -26,8 +27,94 @@ from services.stake.bankroll.repository import BankrollRepository
 from services.stake.handlers.commands import balance_header
 from services.stake.keyboards.stake_kb import bankroll_confirm_kb, bankroll_input_kb
 from services.stake.audit.logger import AuditLogger
+from services.stake.pipeline.graph import build_analysis_graph
+
+logger = logging.getLogger("stake")
 
 router = Router(name="callbacks")
+
+
+async def _run_analysis_pipeline(
+    callback: CallbackQuery,
+    state: FSMContext,
+    fsm_data: dict,
+    settings,
+) -> None:
+    """Run the Phase 2 analysis pipeline after race confirmation.
+
+    Builds initial state from FSM data (parse results stored by _run_parse_pipeline),
+    invokes the analysis graph, and sends the recommendation or skip message to Telegram.
+
+    Progressive status updates are sent before launching the graph to give the user
+    feedback that work is happening.
+
+    Args:
+        callback: The CallbackQuery that triggered confirmation.
+        state: FSM context for state management.
+        fsm_data: Data dict loaded from FSM (contains pipeline_result).
+        settings: StakeSettings instance.
+    """
+    audit = AuditLogger()
+    header = balance_header(settings.database_path)
+
+    # Progressive update: let user know analysis is starting
+    await callback.message.answer(
+        f"{header}Race confirmed. Running analysis..."
+    )
+
+    # Build initial state from stored parse results
+    pipeline_result = fsm_data.get("pipeline_result", {})
+
+    initial_state: dict = {
+        "parsed_race": pipeline_result.get("parsed_race"),
+        "enriched_runners": pipeline_result.get("enriched_runners") or [],
+        "overround_active": pipeline_result.get("overround_active"),
+        "overround_raw": pipeline_result.get("overround_raw"),
+        "ambiguous_fields": pipeline_result.get("ambiguous_fields") or [],
+    }
+
+    try:
+        # Send progressive updates
+        await callback.message.answer(
+            f"{header}Checking margins..."
+        )
+
+        analysis_graph = build_analysis_graph()
+        result = await analysis_graph.ainvoke(initial_state)
+
+        # Extract and send recommendation text
+        recommendation_text = result.get(
+            "recommendation_text",
+            "Analysis complete — no output generated."
+        )
+
+        await state.set_state(PipelineStates.idle)
+        await callback.message.answer(
+            recommendation_text,
+            parse_mode="HTML",
+        )
+
+        # Audit log: record recommendation data (D-16)
+        audit.log_entry("recommendation", {
+            "final_bets": result.get("final_bets") or [],
+            "skip_signal": result.get("skip_signal", False),
+            "skip_reason": result.get("skip_reason"),
+            "skip_tier": result.get("skip_tier"),
+            "analysis_summary": {
+                "overall_skip": (result.get("analysis_result") or {}).get("overall_skip"),
+                "ai_override": (result.get("analysis_result") or {}).get("ai_override"),
+                "runner_count": len((result.get("analysis_result") or {}).get("recommendations", [])),
+            },
+            "overround_active": pipeline_result.get("overround_active"),
+        })
+
+    except Exception as e:
+        logger.exception("Analysis pipeline error: %s", e)
+        await state.set_state(PipelineStates.idle)
+        await callback.message.answer(
+            f"{header}Analysis error: {str(e)}\n\nPaste new race data when ready."
+        )
+        audit.log_entry("analysis_error", {"error": str(e)})
 
 
 @router.callback_query(ConfirmCB.filter())
@@ -106,16 +193,8 @@ async def handle_parse_confirm(
             )
 
         else:
-            # Bankroll exists in DB — pipeline complete for Phase 1
-            # D-16: show stake % info in completion message
-            stake_amount = current_balance * stake_pct
-            await state.set_state(PipelineStates.idle)
-            await callback.message.answer(
-                f"{header}"
-                f"Race confirmed. Stake: {stake_pct*100:.1f}% = {stake_amount:.2f} USDT per bet.\n"
-                "Analysis pipeline will be available in Phase 2.\n\n"
-                "Paste new race data when ready."
-            )
+            # Bankroll exists in DB — trigger Phase 2 analysis pipeline
+            await _run_analysis_pipeline(callback, state, data, settings)
 
 
 @router.callback_query(BankrollCB.filter())
@@ -154,19 +233,8 @@ async def handle_bankroll_action(
             repo.set_balance(detected)
             audit.log_entry("bankroll_set", {"balance": detected, "source": "paste_detected"})
 
-        # D-16: show stake % in confirmation
-        stake_pct = repo.get_stake_pct()
-        balance = repo.get_balance() or 0.0
-        stake_amount = balance * stake_pct
-
-        await state.set_state(PipelineStates.idle)
-        header = balance_header(settings.database_path)  # Refresh after balance update
-        await callback.message.answer(
-            f"{header}"
-            f"Balance confirmed. Stake: {stake_pct*100:.1f}% = {stake_amount:.2f} USDT per bet.\n"
-            "Race confirmed. Analysis pipeline will be available in Phase 2.\n\n"
-            "Paste new race data when ready."
-        )
+        # Trigger Phase 2 analysis pipeline now that bankroll is confirmed
+        await _run_analysis_pipeline(callback, state, data, settings)
 
     if callback_data.action == "set":
         header = balance_header(settings.database_path)
