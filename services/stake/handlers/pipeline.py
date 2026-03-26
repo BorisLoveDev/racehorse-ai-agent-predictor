@@ -22,7 +22,7 @@ from aiogram.fsm.context import FSMContext
 from services.stake.states import PipelineStates
 from services.stake.settings import get_stake_settings
 from services.stake.handlers.commands import balance_header
-from services.stake.pipeline.graph import build_pipeline_graph
+from services.stake.pipeline.graph import build_pipeline_graph, build_analysis_graph
 from services.stake.pipeline.formatter import format_race_summary
 from services.stake.keyboards.stake_kb import confirm_parse_kb, bankroll_confirm_kb, bankroll_input_kb
 from services.stake.bankroll.repository import BankrollRepository
@@ -195,16 +195,57 @@ async def handle_bankroll_input(message: Message, state: FSMContext) -> None:
         amount = float(match.group())
         repo = BankrollRepository(db_path=settings.database_path)
         repo.set_balance(amount)
-        stake_pct = repo.get_stake_pct()
         audit.log_entry("bankroll_set", {"balance": amount, "source": "manual_input"})
 
-        await state.set_state(PipelineStates.idle)
-        await message.answer(
-            f"Balance set to {amount:.2f} USDT.\n"
-            f"Stake size: {stake_pct*100:.1f}% ({amount * stake_pct:.2f} USDT per bet)\n"
-            f"To adjust stake %: /stake 3\n\n"
-            "Pipeline complete. Paste new race data when ready."
-        )
+        await message.answer(f"Balance set to {amount:.2f} USDT.")
+
+        # Now trigger Phase 2 analysis pipeline
+        data = await state.get_data()
+        pipeline_result = data.get("pipeline_result", {})
+
+        if pipeline_result:
+            initial_state: dict = {
+                "parsed_race": pipeline_result.get("parsed_race"),
+                "enriched_runners": pipeline_result.get("enriched_runners") or [],
+                "overround_active": pipeline_result.get("overround_active"),
+                "overround_raw": pipeline_result.get("overround_raw"),
+                "ambiguous_fields": pipeline_result.get("ambiguous_fields") or [],
+            }
+
+            await message.answer(f"{header}Running analysis...")
+
+            try:
+                analysis_graph = build_analysis_graph()
+                result = await analysis_graph.ainvoke(initial_state)
+
+                recommendation_text = result.get(
+                    "recommendation_text",
+                    "Analysis complete — no output generated."
+                )
+
+                await state.set_state(PipelineStates.idle)
+                await message.answer(
+                    recommendation_text,
+                    parse_mode="HTML",
+                )
+
+                audit.log_entry("recommendation", {
+                    "final_bets": result.get("final_bets") or [],
+                    "skip_signal": result.get("skip_signal", False),
+                    "skip_reason": result.get("skip_reason"),
+                    "skip_tier": result.get("skip_tier"),
+                    "overround_active": pipeline_result.get("overround_active"),
+                })
+            except Exception as e:
+                logger.exception("Analysis pipeline error: %s", e)
+                await state.set_state(PipelineStates.idle)
+                await message.answer(
+                    f"{header}Analysis error: {str(e)}\n\nPaste new race data when ready."
+                )
+                audit.log_entry("analysis_error", {"error": str(e)})
+        else:
+            await state.set_state(PipelineStates.idle)
+            await message.answer("Paste new race data when ready.")
     except ValueError:
         await message.answer(
             f"{header}"
