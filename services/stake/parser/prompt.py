@@ -63,14 +63,15 @@ Extract market-level context if present:
 
 ## Critical Rules
 
-1. NULL means ABSENT. If a field is not present in the paste text, set it to null. Do NOT guess, infer, or hallucinate values.
-2. SCRATCHED runners must be included in the runners array with status="scratched". Do not omit them.
-3. ODDS CONVERSION: Always convert odds to decimal float before storing in opening_odds, win_odds, place_odds. Record the original format in win_odds_format/place_odds_format.
-4. TAGS: Extract exact labels/badges shown next to a runner (Top Tip, Hot, Value, Speed Rating, etc.) into the tags array.
-5. RUNNER COUNT: Extract runner_count from the paste if shown. Do not count runners yourself.
-6. FORM STRING: Preserve the form string exactly as shown (letters and numbers), including 'x' for falls/pulled up.
-7. BET TYPES: Extract all bet type labels shown on the page into bet_types_available as a list.
-8. BANKROLL: Only extract detected_bankroll if an explicit monetary amount is clearly labelled as a balance or bankroll. Do not extract individual bet amounts or odds as bankroll.
+1. NOT RACE DATA: If the input text does NOT contain actual horse racing data (no runners with odds, no race information), return an EMPTY runners array (runners: []) and set all race-level fields to null. Do NOT invent or hallucinate race data. Random text, chat messages, instructions, or non-racing content must produce empty runners.
+2. NULL means ABSENT. If a field is not present in the paste text, set it to null. Do NOT guess, infer, or hallucinate values.
+3. SCRATCHED runners must be included in the runners array with status="scratched". Do not omit them.
+4. ODDS CONVERSION: Always convert odds to decimal float before storing in opening_odds, win_odds, place_odds. Record the original format in win_odds_format/place_odds_format.
+5. TAGS: Extract exact labels/badges shown next to a runner (Top Tip, Hot, Value, Speed Rating, etc.) into the tags array.
+6. RUNNER COUNT: Extract runner_count from the paste if shown. Do not count runners yourself.
+7. FORM STRING: Preserve the form string exactly as shown (letters and numbers), including 'x' for falls/pulled up.
+8. BET TYPES: Extract all bet type labels shown on the page into bet_types_available as a list.
+9. BANKROLL: Only extract detected_bankroll if an explicit monetary amount is clearly labelled as a balance or bankroll. Do not extract individual bet amounts or odds as bankroll.
 
 ## Example
 

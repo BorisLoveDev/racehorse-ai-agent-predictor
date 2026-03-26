@@ -67,6 +67,15 @@ async def parse_node(state: PipelineState) -> dict[str, Any]:
     except Exception as e:
         return {"error": str(e)}
 
+    # Reject if no runners extracted (input was not race data)
+    if not result.runners:
+        return {"error": "No race data found in input. Please paste Stake.com race text with runners and odds."}
+
+    # Reject if no runner has odds (LLM may have hallucinated runner names from garbage)
+    runners_with_odds = [r for r in result.runners if r.win_odds is not None and r.status == "active"]
+    if not runners_with_odds:
+        return {"error": "No runners with odds found. Please paste race data that includes odds for each runner."}
+
     # PIPELINE-02: detect ambiguous/incomplete fields
     ambiguous: list[str] = []
 
