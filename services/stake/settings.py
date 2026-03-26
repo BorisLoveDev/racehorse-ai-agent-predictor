@@ -50,6 +50,14 @@ class ResearchSettings(BaseModel):
         default=4000,
         description="Max tokens for research response"
     )
+    provider: str = Field(
+        default="online",
+        description="Search provider: 'online' (OpenRouter online model) or 'searxng' per D-05/SEARCH-02"
+    )
+    searxng_url: str = Field(
+        default="http://46.30.43.46:8888/search",
+        description="SearXNG endpoint URL (used when provider='searxng')"
+    )
 
 
 class AnalysisSettings(BaseModel):
@@ -104,6 +112,43 @@ class AuditSettings(BaseModel):
     )
 
 
+class SizingSettings(BaseModel):
+    """Bet sizing configuration.
+
+    Controls Kelly criterion parameters, portfolio caps, and minimum bet sizes.
+    Per BET-02 through BET-05 requirements.
+    """
+
+    kelly_multiplier: float = Field(
+        default=0.25,
+        description="Kelly fraction multiplier (0.25 = quarter-Kelly) per BET-02"
+    )
+    per_bet_cap_pct: float = Field(
+        default=0.03,
+        description="Max single bet as fraction of bankroll (3%) per BET-03"
+    )
+    max_total_exposure_pct: float = Field(
+        default=0.05,
+        description="Max total race exposure as fraction of bankroll (5%) per BET-04"
+    )
+    max_win_bets: int = Field(
+        default=2,
+        description="Max win bets per race per BET-04"
+    )
+    skip_overround_threshold: float = Field(
+        default=15.0,
+        description="Pre-analysis skip if overround margin exceeds this % per BET-05/D-06"
+    )
+    min_bet_usdt: float = Field(
+        default=1.0,
+        description="Minimum bet size in USDT — bets below this are rounded up or skipped"
+    )
+    sparsity_discount: float = Field(
+        default=0.5,
+        description="Sizing multiplier when research data is sparse per ANALYSIS-04/D-11"
+    )
+
+
 class StakeSettings(BaseSettings):
     """Main settings for the Stake Advisor Bot service.
 
@@ -121,6 +166,7 @@ class StakeSettings(BaseSettings):
     parser: ParserSettings = Field(default_factory=ParserSettings)
     research: ResearchSettings = Field(default_factory=ResearchSettings)
     analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)
+    sizing: SizingSettings = Field(default_factory=SizingSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     bankroll: BankrollSettings = Field(default_factory=BankrollSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
