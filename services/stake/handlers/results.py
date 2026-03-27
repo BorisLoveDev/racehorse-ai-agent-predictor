@@ -220,18 +220,51 @@ async def handle_result_confirm(
         "wins": wins,
         "losses": losses,
         "outcomes": [o.model_dump() for o in outcomes],
+        "finishing_order": parsed.finishing_order,
+        "is_partial": parsed.is_partial,
     })
 
-    # Store evaluated data in FSM for potential reflection use
     await state.set_state(PipelineStates.idle)
-    await state.update_data(
-        last_evaluated_outcomes=[o.model_dump() for o in outcomes],
-        last_evaluated_bets=final_bets,
-        last_parsed_result=parsed.model_dump(),
-        last_run_id=run_id,
-    )
 
     await callback.message.answer("\n".join(lines), parse_mode="HTML")
+
+    # Run reflection + lesson extraction (non-blocking -- don't fail the flow if LLM errors)
+    try:
+        from services.stake.reflection.writer import ReflectionWriter
+        from services.stake.reflection.extractor import LessonExtractor
+        import html as html_lib
+
+        writer = ReflectionWriter(settings)
+        reflection_text = await writer.write_reflection(
+            outcomes=[o.model_dump() for o in outcomes],
+            final_bets=final_bets,
+            parsed_result=parsed.model_dump(),
+        )
+
+        extractor = LessonExtractor(settings)
+        lesson = await extractor.extract_and_save(
+            reflection_text=reflection_text,
+            db_path=settings.database_path,
+        )
+
+        audit.log_entry("reflection_complete", {
+            "run_id": run_id,
+            "reflection_length": len(reflection_text),
+            "lesson_error_tag": lesson.error_tag,
+            "lesson_rule": lesson.rule_sentence,
+            "lesson_is_failure": lesson.is_failure_mode,
+        })
+
+        await callback.message.answer(
+            f"<b>Lesson learned:</b>\n"
+            f"[{html_lib.escape(lesson.error_tag)}] {html_lib.escape(lesson.rule_sentence)}",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.exception("Reflection/lesson extraction failed: %s", e)
+        audit.log_entry("reflection_error", {"run_id": run_id, "error": str(e)})
+        # Non-fatal -- continue to idle state
+
     await callback.message.answer("Paste new race data when ready.")
 
 

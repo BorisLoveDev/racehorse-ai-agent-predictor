@@ -295,6 +295,37 @@ def pre_skip_check_node(state: PipelineState) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _build_lessons_block(db_path: str) -> str:
+    """Query stake_lessons for top-5 rules and last-3 failure modes.
+    Per REFLECT-03/D-08: injected into analysis prompt for next race."""
+    from services.stake.reflection.repository import LessonsRepository
+    repo = LessonsRepository(db_path)
+    top_rules = repo.get_top_rules(limit=5)
+    failure_modes = repo.get_recent_failures(limit=3)
+
+    if not top_rules and not failure_modes:
+        return ""
+
+    # Increment application count for rules being injected
+    rule_ids = [r.get("id") for r in top_rules if r.get("id")]
+    failure_ids = [f.get("id") for f in failure_modes if f.get("id")]
+    all_ids = [i for i in rule_ids + failure_ids if i is not None]
+    if all_ids:
+        repo.increment_application_count(all_ids)
+
+    lines = ["\n=== LEARNED LESSONS (from previous bets) ==="]
+    if top_rules:
+        lines.append("Rules (most applied):")
+        for rule in top_rules:
+            lines.append(f"  [{rule['error_tag']}] {rule['rule_sentence']}")
+    if failure_modes:
+        lines.append("Recent failure modes (avoid these):")
+        for fail in failure_modes:
+            lines.append(f"  [{fail['error_tag']}] {fail['rule_sentence']}")
+    lines.append("=== END LESSONS ===\n")
+    return "\n".join(lines)
+
+
 def _build_analysis_prompt(state: PipelineState, research_results: dict, no_vig_data: list[dict]) -> str:
     """Build analysis prompt for the LLM with pre-computed mathematical values.
 
@@ -487,6 +518,11 @@ async def analysis_node(state: PipelineState) -> dict[str, Any]:
             })
 
         prompt = _build_analysis_prompt(state, research_results, no_vig_data)
+
+        # REFLECT-03/D-08: Prepend learned lessons to analysis prompt
+        lessons_block = _build_lessons_block(settings.database_path)
+        if lessons_block:
+            prompt = lessons_block + prompt
 
         llm = ChatOpenAI(
             openai_api_base="https://openrouter.ai/api/v1",
