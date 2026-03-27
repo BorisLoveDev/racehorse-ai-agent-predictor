@@ -21,6 +21,7 @@ from services.stake.pipeline.state import PipelineState
 from services.stake.pipeline.nodes import (
     analysis_node,
     calc_node,
+    drawdown_check_node,
     format_recommendation_node,
     parse_node,
     pre_skip_check_node,
@@ -120,19 +121,39 @@ def build_pipeline_graph():
     return graph.compile()
 
 
+def drawdown_router(state: PipelineState) -> str:
+    """Route to format_recommendation if drawdown circuit breaker fired.
+
+    Used after drawdown_check_node. If the bankroll has dropped >=threshold%
+    from peak, jump directly to format_recommendation (skip message) without
+    running any expensive LLM steps.
+
+    Args:
+        state: Current pipeline state after drawdown_check_node.
+
+    Returns:
+        "skip" if skip_signal is True (drawdown tripped), otherwise "continue".
+    """
+    if state.get("skip_signal"):
+        return "skip"
+    return "continue"
+
+
 def build_analysis_graph():
     """Build Phase 2 analysis pipeline StateGraph.
 
     Graph topology:
-        pre_skip_check -> [skip_router] -> format_recommendation -> END  (Tier 1 skip)
-                                        -> research -> [research_error_router] -> END  (on error)
-                                                                               -> analysis -> [analysis_error_router] -> END  (on error)
-                                                                                           -> sizing -> format_recommendation -> END
+        drawdown_check -> [drawdown_router] -> format_recommendation -> END  (drawdown tripped)
+                                            -> pre_skip_check -> [skip_router] -> format_recommendation -> END  (Tier 1 skip)
+                                                                               -> research -> [research_error_router] -> END  (on error)
+                                                                                           -> analysis -> [analysis_error_router] -> END  (on error)
+                                                                                                       -> sizing -> format_recommendation -> END
 
     Conditional routing:
+        - Drawdown (balance >= threshold% below peak): format_recommendation shows protection message
         - Tier 1 skip (overround > threshold): format_recommendation shows skip message
-        - Research error: END immediately (non-recoverable)
-        - Analysis error: END immediately (non-recoverable)
+        - Research error: format_recommendation (non-recoverable)
+        - Analysis error: format_recommendation (non-recoverable)
         - Happy path: full research -> analysis -> sizing -> format_recommendation
 
     Returns:
@@ -140,13 +161,24 @@ def build_analysis_graph():
     """
     graph = StateGraph(PipelineState)
 
+    graph.add_node("drawdown_check", drawdown_check_node)
     graph.add_node("pre_skip_check", pre_skip_check_node)
     graph.add_node("research", research_node)
     graph.add_node("analysis", analysis_node)
     graph.add_node("sizing", sizing_node)
     graph.add_node("format_recommendation", format_recommendation_node)
 
-    graph.set_entry_point("pre_skip_check")
+    graph.set_entry_point("drawdown_check")
+
+    # After drawdown_check: skip (drawdown tripped) -> show skip message; continue -> pre_skip_check
+    graph.add_conditional_edges(
+        "drawdown_check",
+        drawdown_router,
+        {
+            "skip": "format_recommendation",
+            "continue": "pre_skip_check",
+        },
+    )
 
     # After pre_skip_check: skip -> show skip message; continue -> research
     graph.add_conditional_edges(

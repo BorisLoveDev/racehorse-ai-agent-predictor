@@ -8,7 +8,7 @@ InlineKeyboardBuilder from aiogram.
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from services.stake.callbacks import ConfirmCB, BankrollCB, MenuCB, SkipCB
+from services.stake.callbacks import ConfirmCB, BankrollCB, MenuCB, SkipCB, TrackingCB, ResultCB, DrawdownCB
 
 
 def confirm_parse_kb() -> InlineKeyboardMarkup:
@@ -57,6 +57,36 @@ def skip_confirm_kb() -> InlineKeyboardMarkup:
     builder.button(text="Continue Anyway", callback_data=SkipCB(action="continue"))
     builder.button(text="Skip Race", callback_data=SkipCB(action="skip"))
     builder.adjust(2)
+    return builder.as_markup()
+
+
+def tracking_kb() -> InlineKeyboardMarkup:
+    """Placed/Tracked choice shown on recommendation message. Per D-03.
+
+    After a recommendation is shown, ask whether the user placed the bets
+    (for P&L tracking) or is only tracking for analysis purposes.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Placed (I bet this)", callback_data=TrackingCB(action="placed"))
+    builder.button(text="Tracked (not bet)", callback_data=TrackingCB(action="tracked"))
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def result_confirm_kb() -> InlineKeyboardMarkup:
+    """Confirm/reject parsed result keyboard shown before P&L evaluation."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Confirm", callback_data=ResultCB(action="yes"))
+    builder.button(text="Re-enter", callback_data=ResultCB(action="no"))
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def drawdown_unlock_kb() -> InlineKeyboardMarkup:
+    """Unlock drawdown protection inline button."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Unlock Protection", callback_data=DrawdownCB(action="unlock"))
+    builder.adjust(1)
     return builder.as_markup()
 
 

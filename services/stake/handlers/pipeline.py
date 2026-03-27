@@ -24,7 +24,7 @@ from services.stake.settings import get_stake_settings
 from services.stake.handlers.commands import balance_header
 from services.stake.pipeline.graph import build_pipeline_graph, build_analysis_graph
 from services.stake.pipeline.formatter import format_race_summary
-from services.stake.keyboards.stake_kb import confirm_parse_kb, bankroll_confirm_kb, bankroll_input_kb, skip_confirm_kb
+from services.stake.keyboards.stake_kb import confirm_parse_kb, bankroll_confirm_kb, bankroll_input_kb, skip_confirm_kb, tracking_kb
 from services.stake.bankroll.repository import BankrollRepository
 from services.stake.audit.logger import AuditLogger
 
@@ -92,8 +92,33 @@ async def _run_analysis_inline(
             "recommendation_text",
             "Analysis complete — no output generated."
         )
+        final_bets = result.get("final_bets") or []
+        skip_signal = result.get("skip_signal", False)
 
-        await state.set_state(PipelineStates.idle)
+        # Store pipeline run record and get run_id
+        import sqlite3
+        settings = get_stake_settings()
+        from services.stake.bankroll.repository import BankrollRepository as _BR
+        _repo = _BR(db_path=settings.database_path)
+        run_id = 0
+        try:
+            conn = sqlite3.connect(settings.database_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO stake_pipeline_runs (raw_input, parsed_race_json, user_confirmed, bankroll_at_run) VALUES (?, ?, 1, ?)",
+                (
+                    pipeline_result.get("raw_input", ""),
+                    str(pipeline_result.get("parsed_race", "")),
+                    _repo.get_balance(),
+                ),
+            )
+            run_id = cursor.lastrowid or 0
+            conn.commit()
+            conn.close()
+        except Exception as _e:
+            logger.warning("Could not insert pipeline run record: %s", _e)
+
+        await state.update_data(final_bets=final_bets, run_id=run_id)
 
         # Try to edit status message with result; if too long, send new message
         try:
@@ -107,12 +132,23 @@ async def _run_analysis_inline(
                 parse_mode="HTML",
             )
 
+        # Transition to awaiting_placed_tracked if real bets exist; else idle
+        if final_bets and not skip_signal:
+            await state.set_state(PipelineStates.awaiting_placed_tracked)
+            await message.answer(
+                "Mark this recommendation:",
+                reply_markup=tracking_kb(),
+            )
+        else:
+            await state.set_state(PipelineStates.idle)
+
         audit.log_entry("recommendation", {
-            "final_bets": result.get("final_bets") or [],
-            "skip_signal": result.get("skip_signal", False),
+            "final_bets": final_bets,
+            "skip_signal": skip_signal,
             "skip_reason": result.get("skip_reason"),
             "skip_tier": result.get("skip_tier"),
             "overround_active": pipeline_result.get("overround_active"),
+            "run_id": run_id,
         })
     except Exception as e:
         done.set()

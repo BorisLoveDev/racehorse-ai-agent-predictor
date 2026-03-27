@@ -198,6 +198,51 @@ def calc_node(state: PipelineState) -> dict[str, Any]:
     }
 
 
+def drawdown_check_node(state: PipelineState) -> dict[str, Any]:
+    """RISK-01: Short-circuit if bankroll has dropped >=threshold% from peak.
+
+    Per D-09: fires before analysis to save API cost.
+    Per D-10: threshold configurable via settings.risk.drawdown_threshold_pct.
+
+    Returns skip_signal=True with a drawdown reason when the circuit breaker
+    trips. Returns {} when data is unavailable or drawdown is unlocked.
+
+    Args:
+        state: PipelineState (no specific fields required).
+
+    Returns:
+        Partial state update:
+        - {"skip_signal": True, "skip_reason": str, "skip_tier": 0} on trip
+        - {} when check passes or cannot be computed
+    """
+    settings = get_stake_settings()
+    repo = BankrollRepository(db_path=settings.database_path)
+
+    peak = repo.get_peak_balance()
+    current = repo.get_balance()
+
+    if peak is None or current is None or peak <= 0:
+        return {}  # No data — cannot check
+
+    if repo.is_drawdown_unlocked():
+        return {}  # User explicitly unlocked
+
+    threshold = settings.risk.drawdown_threshold_pct
+    drawdown_pct = ((peak - current) / peak) * 100.0
+
+    if drawdown_pct >= threshold:
+        return {
+            "skip_signal": True,
+            "skip_reason": (
+                f"DRAWDOWN PROTECTION: balance {current:.2f} USDT is "
+                f"{drawdown_pct:.1f}% below peak {peak:.2f} USDT. "
+                f"Use /unlock_drawdown to override."
+            ),
+            "skip_tier": 0,
+        }
+    return {}
+
+
 def pre_skip_check_node(state: PipelineState) -> dict[str, Any]:
     """Pre-analysis skip check based on bookmaker overround margin.
 
