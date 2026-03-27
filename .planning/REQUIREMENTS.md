@@ -65,8 +65,8 @@
 
 - [ ] **RESULT-01**: User can submit race result as flexible text (e.g. "3,5,11,12" or "horse name won" or screenshot)
 - [ ] **RESULT-02**: LLM parses result input into structured finishing order; asks for clarification if ambiguous
-- [ ] **RESULT-03**: System evaluates each bet in the recommendation against actual result; calculates P&L
-- [ ] **TRACK-01**: Each recommendation can be marked `placed` (user actually bet) or `tracked` (recorded for calibration but not bet); P&L stats use `placed` only; model quality metrics use both
+- [x] **RESULT-03**: System evaluates each bet in the recommendation against actual result; calculates P&L
+- [x] **TRACK-01**: Each recommendation can be marked `placed` (user actually bet) or `tracked` (recorded for calibration but not bet); P&L stats use `placed` only; model quality metrics use both
 
 ### Reflection
 
@@ -77,7 +77,7 @@
 ### Statistics & Risk Controls
 
 - [ ] **STATS-01**: User can request P&L stats in Telegram (total, by period, win rate, ROI) — `placed` bets only
-- [ ] **RISK-01**: Drawdown circuit breaker: if bankroll drops ≥20% from its peak value, system automatically enters skip-only mode; all recommendations output as "SKIP (drawdown protection)" until user manually unlocks
+- [x] **RISK-01**: Drawdown circuit breaker: if bankroll drops ≥20% from its peak value, system automatically enters skip-only mode; all recommendations output as "SKIP (drawdown protection)" until user manually unlocks
 
 ---
 
