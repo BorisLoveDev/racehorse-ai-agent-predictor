@@ -70,9 +70,9 @@
 
 ### Reflection
 
-- [ ] **REFLECT-01**: After each evaluated result, AI writes a structured reflection entry to `mindset.md` on server
-- [ ] **REFLECT-02**: Reflection explicitly asks "what went wrong even in winning bets" (calibration-aware, not just win/loss)
-- [ ] **REFLECT-03**: After each reflection, AI extracts one structured lesson: a free-text error tag (1 line) + a rule (1 sentence); top-5 extracted rules + last 3 failure modes are injected into the next race's analysis prompt — not raw reflection text
+- [x] **REFLECT-01**: After each evaluated result, AI writes a structured reflection entry to `mindset.md` on server
+- [x] **REFLECT-02**: Reflection explicitly asks "what went wrong even in winning bets" (calibration-aware, not just win/loss)
+- [x] **REFLECT-03**: After each reflection, AI extracts one structured lesson: a free-text error tag (1 line) + a rule (1 sentence); top-5 extracted rules + last 3 failure modes are injected into the next race's analysis prompt — not raw reflection text
 
 ### Statistics & Risk Controls
 
