@@ -14,6 +14,7 @@ The research_node function is the LangGraph node that runs the full three-phase 
 Per D-06: research_node is a no-op if state["skip_signal"] is True.
 """
 
+import logging
 from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -219,13 +220,20 @@ async def research_node(state: PipelineState) -> dict:
         dict with research_results (ResearchOutput.model_dump()) and research_error.
         On error: research_results=None, research_error=str(e).
     """
+    import time as _time
+    logger = logging.getLogger("stake")
+
     # D-06: respect skip signal — don't waste LLM calls on a race we're already skipping
     if state.get("skip_signal"):
         return {}
 
     try:
+        t0 = _time.time()
         settings = get_stake_settings()
         runners_context = _build_runners_context(state)
+
+        logger.info("[RESEARCH] Starting — orchestrator=%s, sub-agent=%s, provider=%s",
+                     settings.analysis.model, settings.research.model, settings.research.provider)
 
         # ----------------------------------------------------------------
         # Phase 1 — Planning: orchestrator decides what to research
@@ -251,14 +259,22 @@ async def research_node(state: PipelineState) -> dict:
             ]
         )
 
+        logger.info("[RESEARCH] Plan: %d queries in %.1fs",
+                     len(research_plan.queries), _time.time() - t0)
+        for i, q in enumerate(research_plan.queries, 1):
+            logger.info("[RESEARCH]   Q%d: %s", i, q.query[:80])
+
         # ----------------------------------------------------------------
         # Phase 2 — Execution: sub-agents run each search query
         # ----------------------------------------------------------------
         sub_agent = build_search_sub_agent(settings)
         search_results = []
 
-        for search_query in research_plan.queries:
+        for i, search_query in enumerate(research_plan.queries, 1):
+            qt0 = _time.time()
             result_str = await _execute_search_query(sub_agent, search_query.query)
+            logger.info("[RESEARCH]   Q%d done in %.1fs — %d chars",
+                         i, _time.time() - qt0, len(result_str))
             search_results.append(
                 {
                     "query": search_query.query,
@@ -266,6 +282,8 @@ async def research_node(state: PipelineState) -> dict:
                     "result": result_str,
                 }
             )
+
+        logger.info("[RESEARCH] All queries done in %.1fs — synthesizing...", _time.time() - t0)
 
         # ----------------------------------------------------------------
         # Phase 3 — Synthesis: orchestrator consolidates into ResearchOutput
@@ -306,14 +324,17 @@ async def research_node(state: PipelineState) -> dict:
             ]
         )
 
+        research_dict = research_output.model_dump()
+        qualities = [r.get("data_quality", "?") for r in research_dict.get("runners", [])]
+        logger.info("[RESEARCH] Done in %.1fs — %d runners researched, qualities: %s",
+                     _time.time() - t0, len(qualities), qualities)
         return {
-            "research_results": research_output.model_dump(),
+            "research_results": research_dict,
             "research_error": None,
         }
 
     except Exception as e:
-        import logging
-        logging.getLogger("stake").exception("Research node error: %s", e)
+        logger.exception("[RESEARCH] Failed: %s", e)
         return {
             "research_results": None,
             "research_error": str(e),

@@ -14,10 +14,14 @@ Nodes:
 """
 
 import html
+import logging
+import time
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger("stake")
 
 from services.stake.analysis.models import AnalysisResult
 from services.stake.analysis.prompts import ANALYSIS_SYSTEM_PROMPT
@@ -214,6 +218,7 @@ def pre_skip_check_node(state: PipelineState) -> dict[str, Any]:
     """
     # If skip_signal is explicitly False, user chose to continue past margin check
     if state.get("skip_signal") is False:
+        logger.info("[SKIP-CHECK] User forced continue — bypassing margin check")
         return {}
 
     overround_active = state.get("overround_active")
@@ -224,7 +229,10 @@ def pre_skip_check_node(state: PipelineState) -> dict[str, Any]:
     threshold = settings.sizing.skip_overround_threshold
     margin_pct = (overround_active - 1.0) * 100.0
 
+    logger.info("[SKIP-CHECK] Margin %.1f%% vs threshold %.1f%%", margin_pct, threshold)
+
     if margin_pct > threshold:
+        logger.info("[SKIP-CHECK] SKIP — margin too high")
         return {
             "skip_signal": True,
             "skip_reason": (
@@ -398,11 +406,15 @@ async def analysis_node(state: PipelineState) -> dict[str, Any]:
 
     research_error = state.get("research_error")
     if research_error is not None:
+        logger.error("[ANALYSIS] Research failed: %s", research_error)
         return {"error": f"Research failed: {research_error}"}
 
     try:
+        t0 = time.time()
         settings = get_stake_settings()
         enriched_runners = state.get("enriched_runners") or []
+        logger.info("[ANALYSIS] Starting analysis — model=%s, runners=%d",
+                     settings.analysis.model, len(enriched_runners))
         overround_active = state.get("overround_active")
         research_results = state.get("research_results") or {}
 
@@ -444,9 +456,14 @@ async def analysis_node(state: PipelineState) -> dict[str, Any]:
             HumanMessage(content=prompt),
         ])
 
-        return {"analysis_result": result.model_dump()}
+        analysis_dict = result.model_dump()
+        labels = [r.get("label", "?") for r in analysis_dict.get("recommendations", [])]
+        logger.info("[ANALYSIS] Done in %.1fs — labels: %s, skip=%s",
+                     time.time() - t0, labels, analysis_dict.get("overall_skip"))
+        return {"analysis_result": analysis_dict}
 
     except Exception as e:
+        logger.exception("[ANALYSIS] Failed: %s", e)
         return {"error": f"Analysis failed: {str(e)}"}
 
 
@@ -470,10 +487,12 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
 
     analysis_result = state.get("analysis_result")
     if not analysis_result:
+        logger.warning("[SIZING] No analysis_result — returning empty bets")
         return {"final_bets": []}
 
     # Check Tier 2 skip: AI recommends skipping
     if analysis_result.get("overall_skip") or analysis_result.get("ai_override"):
+        logger.info("[SIZING] Tier 2 skip — AI recommends skipping")
         skip_reason = (
             analysis_result.get("skip_reason")
             or analysis_result.get("override_reason")
@@ -641,6 +660,16 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
         bet = dict(b)
         bet["usdt_amount"] = bet.get("usdt_amount") or bet.get("amount", 0.0)
         final_bets.append(bet)
+
+    total_usdt = sum(b.get("usdt_amount", 0) for b in final_bets)
+    logger.info("[SIZING] %d raw bets → %d after caps | total %.2f USDT / %.2f bankroll (%.1f%%)",
+                len(raw_bets), len(final_bets), total_usdt, bankroll,
+                (total_usdt / bankroll * 100) if bankroll else 0)
+    for b in final_bets:
+        logger.info("[SIZING]   #%s %s | %s %.2f USDT | EV %+.3f | Kelly %.1f%%",
+                    b.get("runner_number"), b.get("runner_name"),
+                    b.get("bet_type"), b.get("usdt_amount", 0),
+                    b.get("ev", 0), b.get("kelly_pct", 0))
 
     return {"final_bets": final_bets}
 
