@@ -434,3 +434,34 @@ def test_check_and_auto_reset_drawdown(bankroll_repo):
     bankroll_repo.set_balance(90.0)  # 10% from peak of 100, above 20% threshold
     bankroll_repo.check_and_auto_reset_drawdown(threshold_pct=20.0)
     assert bankroll_repo.is_drawdown_unlocked() is False  # auto-reset
+
+
+# ---------------------------------------------------------------------------
+# STATS-01: /stats placed_only tests
+# ---------------------------------------------------------------------------
+
+
+def test_stats_placed_only(tmp_path):
+    """STATS-01: get_total_stats returns only placed bet stats."""
+    from services.stake.results.repository import BetOutcomesRepository
+
+    db_path = str(tmp_path / "test.db")
+    repo = BetOutcomesRepository(db_path)
+
+    # Save placed bet (won)
+    repo.save_outcomes(1, True, [{
+        "runner_name": "A", "runner_number": 1, "bet_type": "win",
+        "amount_usdt": 5.0, "decimal_odds": 3.0, "won": True,
+        "profit_usdt": 10.0, "evaluable": True,
+    }])
+    # Save tracked bet (won) -- should NOT appear in placed stats
+    repo.save_outcomes(2, False, [{
+        "runner_name": "B", "runner_number": 2, "bet_type": "win",
+        "amount_usdt": 5.0, "decimal_odds": 2.0, "won": True,
+        "profit_usdt": 5.0, "evaluable": True,
+    }])
+
+    stats = repo.get_total_stats(placed_only=True)
+    assert stats["total_bets"] == 1
+    assert stats["wins"] == 1
+    assert stats["total_profit_usdt"] == 10.0

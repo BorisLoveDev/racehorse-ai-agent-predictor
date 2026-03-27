@@ -179,6 +179,42 @@ async def cmd_stake(message: Message) -> None:
     )
 
 
+@router.message(Command("stats"))
+async def cmd_stats(message: Message, state: FSMContext) -> None:
+    """STATS-01: Show P&L stats for placed bets."""
+    settings = get_stake_settings()
+    header = balance_header(settings.database_path)
+
+    from services.stake.results.repository import BetOutcomesRepository
+    repo = BetOutcomesRepository(db_path=settings.database_path)
+
+    all_time = repo.get_total_stats(placed_only=True)
+    last_30 = repo.get_period_stats(days=30, placed_only=True)
+    last_7 = repo.get_period_stats(days=7, placed_only=True)
+
+    def _format_stats(label: str, stats: dict) -> str:
+        if stats["total_bets"] == 0:
+            return f"<b>{label}:</b> No bets yet"
+        return (
+            f"<b>{label}:</b>\n"
+            f"  Bets: {stats['total_bets']} ({stats['wins']}W / {stats['total_bets'] - stats['wins']}L)\n"
+            f"  Win rate: {stats['win_rate']:.1f}%\n"
+            f"  P&amp;L: {stats['total_profit_usdt']:+.2f} USDT\n"
+            f"  ROI: {stats['roi_pct']:+.1f}%"
+        )
+
+    lines = [
+        f"{header}<b>P&amp;L Statistics (placed bets only)</b>\n",
+        _format_stats("All Time", all_time),
+        "",
+        _format_stats("Last 30 Days", last_30),
+        "",
+        _format_stats("Last 7 Days", last_7),
+    ]
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
+
 @router.message(Command("unlock_drawdown"))
 async def cmd_unlock_drawdown(message: Message, state: FSMContext) -> None:
     """Handle /unlock_drawdown — override the drawdown circuit breaker.

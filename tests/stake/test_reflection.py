@@ -347,3 +347,37 @@ async def test_extract_and_save_uses_db_path_argument(tmp_path, mock_lesson_extr
     repo = LessonsRepository(db_path=custom_db)
     rules = repo.get_top_rules(limit=10)
     assert len(rules) == 1
+
+
+# ---------------------------------------------------------------------------
+# _build_lessons_block() tests
+# ---------------------------------------------------------------------------
+
+
+def test_build_lessons_block_with_rules(tmp_path):
+    """REFLECT-03: _build_lessons_block returns formatted block with top rules and failures."""
+    from services.stake.reflection.repository import LessonsRepository
+    from services.stake.pipeline.nodes import _build_lessons_block
+
+    db_path = str(tmp_path / "test.db")
+    repo = LessonsRepository(db_path)
+
+    # Insert some lessons
+    repo.save_lesson("overconfidence", "Check form before large bets", is_failure=True)
+    repo.save_lesson("good_value_spot", "Trust value bets with strong EV", is_failure=False)
+
+    block = _build_lessons_block(db_path)
+    assert "LEARNED LESSONS" in block
+    assert "overconfidence" in block
+    assert "Check form before large bets" in block
+
+
+def test_build_lessons_block_empty_db(tmp_path):
+    """_build_lessons_block returns empty string when no lessons exist."""
+    from services.stake.pipeline.nodes import _build_lessons_block
+    # Force migration by importing repository
+    from services.stake.reflection.repository import LessonsRepository
+    LessonsRepository(str(tmp_path / "test.db"))
+
+    block = _build_lessons_block(str(tmp_path / "test.db"))
+    assert block == ""
