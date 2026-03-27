@@ -2,8 +2,9 @@
 phase: 3
 slug: results-reflection-and-stats
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
+wave_0_justification: "Test files (test_results.py, test_reflection.py) are created inline by implementation tasks using TDD pattern. Plan 03-01 Task 1 creates test_results.py with TDD (tests written before implementation). Plan 03-01 Task 2a creates test_reflection.py. No separate Wave 0 plan needed."
 created: 2026-03-27
 ---
 
@@ -36,31 +37,28 @@ created: 2026-03-27
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 03-01-01 | 01 | 0 | RESULT-01 | unit | `pytest tests/stake/test_result_parser.py -x` | ❌ W0 | ⬜ pending |
-| 03-01-02 | 01 | 0 | RESULT-02 | unit | `pytest tests/stake/test_bet_evaluation.py -x` | ❌ W0 | ⬜ pending |
-| 03-02-01 | 02 | 1 | RESULT-03 | unit | `pytest tests/stake/test_bet_outcomes.py -x` | ❌ W0 | ⬜ pending |
-| 03-02-02 | 02 | 1 | TRACK-01 | unit | `pytest tests/stake/test_placed_tracked.py -x` | ❌ W0 | ⬜ pending |
-| 03-03-01 | 03 | 2 | REFLECT-01 | unit | `pytest tests/stake/test_reflection.py -x` | ❌ W0 | ⬜ pending |
-| 03-03-02 | 03 | 2 | REFLECT-02, REFLECT-03 | unit | `pytest tests/stake/test_lessons.py -x` | ❌ W0 | ⬜ pending |
-| 03-04-01 | 04 | 2 | STATS-01 | unit | `pytest tests/stake/test_stats.py -x` | ❌ W0 | ⬜ pending |
-| 03-05-01 | 05 | 1 | RISK-01 | unit | `pytest tests/stake/test_drawdown.py -x` | ❌ W0 | ⬜ pending |
+| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | Test File | Status |
+|---------|------|------|-------------|-----------|-------------------|-----------|--------|
+| 03-01-01 | 01 | 1 | RESULT-02 | unit (TDD) | `pytest tests/stake/test_results.py -x` | test_results.py | pending |
+| 03-01-02a | 01 | 1 | RESULT-03, TRACK-01 | unit | `pytest tests/stake/test_results.py tests/stake/test_reflection.py -x` | test_results.py, test_reflection.py | pending |
+| 03-01-02b | 01 | 1 | TRACK-01 | import | `python -c "from services.stake.callbacks import TrackingCB"` | N/A | pending |
+| 03-02-01 | 02 | 2 | RESULT-01, RISK-01 | import+suite | `pytest tests/stake/ -x -q` | N/A | pending |
+| 03-02-02 | 02 | 2 | RESULT-01, RESULT-02 | import+suite | `pytest tests/stake/ -x -q` | N/A | pending |
+| 03-03-01 | 03 | 2 | REFLECT-01, REFLECT-02 | unit | `pytest tests/stake/test_reflection.py -x` | test_reflection.py | pending |
+| 03-03-02 | 03 | 2 | REFLECT-03 | unit | `pytest tests/stake/test_reflection.py -x` | test_reflection.py | pending |
+| 03-04-01 | 04 | 3 | REFLECT-03 | import+suite | `pytest tests/stake/ -x -q` | N/A | pending |
+| 03-04-02 | 04 | 3 | STATS-01 | unit | `pytest tests/stake/test_results.py tests/stake/test_reflection.py -x` | test_results.py, test_reflection.py | pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: pending / green / red / flaky*
 
 ---
 
-## Wave 0 Requirements
+## Test File Mapping
 
-- [ ] `tests/stake/test_result_parser.py` — stubs for RESULT-01 (flexible text parsing, ambiguity detection)
-- [ ] `tests/stake/test_bet_evaluation.py` — stubs for RESULT-02 (bet evaluation against results)
-- [ ] `tests/stake/test_bet_outcomes.py` — stubs for RESULT-03 (P&L breakdown display)
-- [ ] `tests/stake/test_placed_tracked.py` — stubs for TRACK-01 (placed/tracked distinction)
-- [ ] `tests/stake/test_reflection.py` — stubs for REFLECT-01 (mindset.md reflection writing)
-- [ ] `tests/stake/test_lessons.py` — stubs for REFLECT-02, REFLECT-03 (lesson extraction, injection)
-- [ ] `tests/stake/test_stats.py` — stubs for STATS-01 (P&L stats command)
-- [ ] `tests/stake/test_drawdown.py` — stubs for RISK-01 (drawdown circuit breaker)
+| Test File | Created By | Covers |
+|-----------|------------|--------|
+| `tests/stake/test_results.py` | 03-01 Task 1 (TDD), extended by 03-01 Task 2a, 03-04 Task 2 | Evaluator, BetOutcomesRepository, BankrollRepository peak/drawdown, stats |
+| `tests/stake/test_reflection.py` | 03-01 Task 2a, extended by 03-03 Tasks 1-2, 03-04 Task 2 | LessonsRepository, ReflectionWriter, LessonExtractor, _build_lessons_block |
 
 ---
 
@@ -76,11 +74,11 @@ created: 2026-03-27
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify commands
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covered: test files created inline by TDD tasks (no separate Wave 0 needed)
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** ready
