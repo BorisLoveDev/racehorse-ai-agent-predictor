@@ -79,7 +79,13 @@ Plans:
   6. User can request P&L stats (total, by period, win rate, ROI) for `placed` bets at any time
   7. If bankroll drops >=20% from its recorded peak, all subsequent recommendations are automatically issued as "SKIP (drawdown protection)" until user explicitly unlocks
   8. Audit log entry updated with result and P&L for this run
-**Plans**: TBD
+**Plans:** 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Pydantic models + evaluator + migrations + repositories + settings + odds fix
+- [ ] 03-02-PLAN.md — Result parser + drawdown check node + result handlers + evaluation flow
+- [ ] 03-03-PLAN.md — ReflectionWriter + LessonExtractor + mindset.md
+- [ ] 03-04-PLAN.md — Lesson injection into analysis + /stats command + audit integration
 
 ## Progress
 
@@ -90,4 +96,4 @@ Phases execute in numeric order: 1 -> 2 -> 3
 |-------|----------------|--------|-----------|
 | 1. Foundation and Parser | 5/6 | In Progress|  |
 | 2. EV Engine and Analysis | 4/4 | Complete   | 2026-03-26 |
-| 3. Results, Reflection and Stats | 0/TBD | Not started | - |
+| 3. Results, Reflection and Stats | 0/4 | Planning complete | - |
