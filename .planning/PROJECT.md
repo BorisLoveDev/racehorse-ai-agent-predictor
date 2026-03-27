@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Telegram-driven AI betting advisor for horse racing on Stake.com. The user pastes raw page text from Stake.com directly into the bot, and the system runs it through a multi-step analysis pipeline: parsing odds → web research → AI analysis → bankroll-aware bet sizing → results tracking → reflective learning. Built as a new branch/service in the existing racehorse-agent repo, sharing infrastructure (OpenRouter, SearXNG, Telegram bot token, SQLite, Docker on Meridian).
+A Telegram-driven AI betting advisor for horse racing on Stake.com. The user pastes raw page text from Stake.com directly into the bot, and the system runs it through a multi-step analysis pipeline: parsing odds → web research → AI analysis → bankroll-aware bet sizing → results tracking → reflective learning. Built as a service in the racehorse-agent repo on Meridian (Docker + Coolify).
 
 ## Core Value
 
@@ -12,99 +12,81 @@ Given raw Stake.com race data, produce mathematically sound bet recommendations 
 
 ### Validated
 
-- ✓ OpenRouter API integration (multi-model via `src/agents/`) — existing
-- ✓ SearXNG web search container on Meridian (port 8080 internal / 8888 external) — existing
-- ✓ Telegram bot with aiogram, inline keyboards, callback handlers — existing pattern
-- ✓ SQLite persistence via `src/database/repositories.py` — existing
-- ✓ Docker Compose deployment on Meridian via Coolify — existing
-- ✓ Redis pub/sub message bus — existing infrastructure
+- ✓ OpenRouter API integration — existing infra
+- ✓ SearXNG web search on Meridian — existing infra
+- ✓ Telegram bot with aiogram, keyboards, callbacks — existing pattern
+- ✓ SQLite persistence — existing pattern
+- ✓ Docker Compose + Coolify deployment — existing infra
+- ✓ Redis for FSM state persistence — existing infra
+- ✓ **INPUT-01, INPUT-02**: Paste text or .txt file into Telegram — v1.0
+- ✓ **PARSE-01–06**: LLM extraction, configurable model, odds normalization, scratched runners — v1.0
+- ✓ **BANK-01–05**: SQLite bankroll, auto-detect from text, explicit update, balance header — v1.0
+- ✓ **SEARCH-01, SEARCH-02**: Web research with configurable provider (SearXNG/OpenRouter) — v1.0
+- ✓ **ANALYSIS-01–05**: Betting labels, overround math, EV vs no-vig, uncertainty discount, market discrepancy — v1.0
+- ✓ **BET-01–07**: Deterministic Kelly sizing, portfolio caps, skip signal, USDT amounts, place payout — v1.0
+- ✓ **PIPELINE-01–05**: Progressive updates, clarification, cancel, persistence, one-session guard — v1.0
+- ✓ **AUDIT-01**: Append-only JSONL audit trail — v1.0
+- ✓ **RESULT-01–03**: Flexible result text, LLM parse, P&L evaluation — v1.0
+- ✓ **TRACK-01**: Placed vs tracked marking; stats use placed only — v1.0
+- ✓ **REFLECT-01–03**: AI reflection to mindset.md, calibration-aware, lesson extraction + injection — v1.0
+- ✓ **STATS-01**: /stats with all-time, 30-day, 7-day P&L — v1.0
+- ✓ **RISK-01**: Drawdown circuit breaker at 20% from peak with unlock button — v1.0
+- ✓ **ARCH-01**: All math is deterministic Python, LLM never generates bet amounts — v1.0
 
 ### Active
 
-- [ ] **INPUT-01**: User can paste raw Stake.com page text into Telegram chat
-- [ ] **INPUT-02**: User can send a .txt file with Stake.com race data
-- [ ] **PARSE-01**: Parser extracts race name, participants, odds from raw text
-- [ ] **CLEAN-01**: Optional LLM-based cleanup step removes noise from raw paste
-- [ ] **SEARCH-01**: Web research step finds form, trainer stats, expert opinions for race participants
-- [ ] **SEARCH-02**: Search provider configurable: SearXNG (default) or OpenRouter online model
-- [ ] **ANALYSIS-01**: AI analyzes all gathered data and produces structured recommendation (favorite, dark horse, skip signal)
-- [ ] **BANK-01**: Bankroll stored in SQLite (USDT), updated after each resolved bet
-- [ ] **BANK-02**: Bankroll auto-extracted from dialog context; bot asks if not found
-- [ ] **BANK-03**: Current balance shown in every response header
-- [ ] **BET-01**: Bet sizing calculated using professional bankroll management (Kelly criterion or similar)
-- [ ] **BET-02**: Bot recommends skipping when bookmaker margin makes bet -EV
-- [ ] **BET-03**: Final recommendation shows exact amounts per bet type
-- [x] **RESULT-01**: User pastes race result back to bot; system evaluates prediction accuracy — Validated in Phase 03
-- [x] **REFLECT-01**: After each result, AI writes reflection to `mindset.md` on server — Validated in Phase 03
-- [x] **STATS-01**: Session and historical P&L visible in Telegram — Validated in Phase 03
-- [ ] **PIPELINE-01**: Full pipeline runs step-by-step in Telegram conversation
-- [ ] **AGENT-01**: (v2) Agent mode — LLM autonomously decides which tools to call and in what order
+- [ ] **AGENT-01**: (v2) Agent mode — LLM autonomously decides which tools to call
+- [ ] **AGENT-02**: Mode toggle in Telegram (pipeline / agent)
+- [ ] **AGENT-03**: A/B comparison: pipeline vs agent mode performance tracking
+- [ ] **MULTI-01**: Multi-model consensus — parallel analysis, merged recommendations
+- [ ] **CALIB-01**: Calibration tracking — after 50+ bets, map confidence to calibrated probability
+- [ ] **CALIB-02**: Calibration-based stake sizing — flat 1% until calibrated, then Kelly
+- [ ] **MARKET-01**: Live odds freshness guard
 
 ### Out of Scope
 
-- TabTouch scraping — this system is manual-input only (Stake.com has anti-bot protection)
-- Automatic bet placement — recommendations only, no API to bookmaker
-- Multi-sport support — horse racing only for v1
-- Multiple users — single-user bot (personal tool)
-- Auto-monitoring / scheduled triggers — user-initiated per race
+- TabTouch scraping — manual-input only (Stake.com anti-bot)
+- Automatic bet placement — no bookmaker API
+- Multi-sport — horse racing only
+- Multiple users — single-user personal tool
+- Real-time odds monitoring — manual input model
+- Full Kelly sizing — dangerous without calibration, hard-blocked
+- Mobile app — Telegram is the interface
+- Live odds reprice — requires API access
 
-## Context
+## Current State
 
-**Existing infrastructure reused:**
-- OpenRouter API key + existing agent patterns (`src/agents/BaseAgent`, `StructuredBet`)
-- SearXNG container already running on Meridian
-- aiogram Telegram bot patterns (callbacks, keyboards, inline menus)
-- SQLite + repositories pattern
-- Docker Compose + Coolify on Meridian (46.30.43.46)
+**v1.0 MVP shipped 2026-03-27**
 
-**Key difference from existing system:**
-- Existing system: fully automated TabTouch scraper → auto-analysis → push notifications
-- New system: manual Stake.com input → interactive pipeline → user-in-the-loop
-
-**Framework decision pending research:**
-- Current system uses plain asyncio (no agent framework)
-- Need to evaluate: LangChain/LangGraph, PydanticAI, plain asyncio, or OpenRouter tool-use
-- Decision criteria: best fit for pipeline + agent dual-mode, tool use quality, complexity
-
-**Bankroll model:**
-- Unit: USDT
-- Extracted from dialog context first; DB fallback; explicit "balance: X" command
-- All recommendations expressed as % of bank + absolute USDT amount
-
-## Constraints
-
-- **Tech Stack**: Python 3.13+, aiogram, OpenRouter API, SQLite, Docker — consistent with existing repo
-- **Deployment**: Meridian server (2 vCPU, 4GB RAM) — no heavy ML models locally
-- **Cost**: Per-race analysis cost should stay under existing agent cost profile (~$0.05–0.10)
-- **Single user**: No auth required, single chat ID in env
-- **Branch isolation**: New `stake-advisor` branch — no changes to existing services
+- 5,435 LOC Python (`services/stake/`), 3,589 LOC tests (`tests/stake/`)
+- 210 unit tests passing
+- 3 Docker containers: redis, searxng, stake
+- Stack: Python 3.11, aiogram 3, LangChain/LangGraph, OpenRouter, Redis (FSM), SQLite
+- Deployed on Meridian via Coolify
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Horse racing only (v1) | Focus scope, reuse existing AI knowledge | — Pending |
-| Manual input vs scraping | Stake.com anti-bot protection makes scraping unreliable | ✓ Good |
-| Pipeline-first, agent-mode later | Lower risk, working v1 faster, agent mode built on proven pipeline | — Pending |
-| SearXNG as default search | Already running on Meridian, free, no API key needed | — Pending |
-| Framework choice | Undecided — research required before planning | — Pending |
+| Horse racing only (v1) | Focus scope, reuse existing AI knowledge | ✓ Good — shipped full pipeline |
+| Manual input vs scraping | Stake.com anti-bot protection | ✓ Good — paste UX works |
+| Pipeline-first, agent-mode later | Lower risk, working v1 faster | ✓ Good — pipeline proven, agent mode is v2 |
+| LangGraph as framework | Already installed, zero migration, supports dual pipeline/agent | ✓ Good — clean node composition |
+| SearXNG as default search | Already on Meridian, free | ⚠️ Revisit — defaulted to OpenRouter online for simpler dev |
+| ARCH-01: Deterministic math | LLM hallucinating amounts is dangerous for betting | ✓ Good — enforced across all phases |
+| Quarter-Kelly default (0.25×) | Conservative sizing for uncalibrated model | ✓ Good — configurable via STAKE_SIZING__* |
+| Reflection with lesson injection | Learning loop improves analysis over time | ✓ Good — top-5 rules + last-3 failures injected |
+
+## Constraints
+
+- **Tech Stack**: Python 3.11, aiogram 3, LangGraph, OpenRouter, SQLite, Docker
+- **Deployment**: Meridian server (2 vCPU, 4GB RAM) via Coolify
+- **Cost**: Per-race analysis ~$0.01–0.05 (gemini-flash models)
+- **Single user**: No auth, single chat ID in env
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
-**After each phase transition** (via `/gsd:transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd:complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
-
 ---
-*Last updated: 2026-03-27 after Phase 03 completion — results, reflection, stats all verified*
+*Last updated: 2026-03-27 after v1.0 milestone*
