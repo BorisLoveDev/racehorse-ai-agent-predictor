@@ -34,9 +34,9 @@ Given raw Stake.com race data, produce mathematically sound bet recommendations 
 - [ ] **BET-01**: Bet sizing calculated using professional bankroll management (Kelly criterion or similar)
 - [ ] **BET-02**: Bot recommends skipping when bookmaker margin makes bet -EV
 - [ ] **BET-03**: Final recommendation shows exact amounts per bet type
-- [ ] **RESULT-01**: User pastes race result back to bot; system evaluates prediction accuracy
-- [ ] **REFLECT-01**: After each result, AI writes reflection to `mindset.md` on server (what worked, what didn't, future adjustments)
-- [ ] **STATS-01**: Session and historical P&L visible in Telegram
+- [x] **RESULT-01**: User pastes race result back to bot; system evaluates prediction accuracy — Validated in Phase 03
+- [x] **REFLECT-01**: After each result, AI writes reflection to `mindset.md` on server — Validated in Phase 03
+- [x] **STATS-01**: Session and historical P&L visible in Telegram — Validated in Phase 03
 - [ ] **PIPELINE-01**: Full pipeline runs step-by-step in Telegram conversation
 - [ ] **AGENT-01**: (v2) Agent mode — LLM autonomously decides which tools to call and in what order
 
@@ -107,4 +107,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after initialization*
+*Last updated: 2026-03-27 after Phase 03 completion — results, reflection, stats all verified*
