@@ -24,3 +24,9 @@ class PipelineStates(StatesGroup):
     awaiting_bankroll_input = State()     # No balance anywhere, user must enter
     awaiting_skip_confirm = State()       # High margin detected, user decides skip or continue
     processing = State()                  # Pipeline running (future phases)
+
+    # Phase 3: result tracking states
+    awaiting_placed_tracked = State()       # After recommendation — Placed/Tracked choice
+    awaiting_result = State()               # Waiting for result text from user
+    awaiting_result_clarification = State() # Ambiguous result — asking user for clarification
+    confirming_result = State()             # User confirms parsed result before evaluation

@@ -603,6 +603,8 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
                         "kelly_pct": round(kf * 100, 2),
                         "amount": amount,
                         "usdt_amount": amount,
+                        "decimal_odds": decimal_odds,
+                        "place_odds": None,
                         "data_sparse": is_sparse,
                         "reasoning": rec.get("reasoning", ""),
                     })
@@ -632,6 +634,8 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
                         "kelly_pct": round(kf * 100, 2),
                         "amount": amount,
                         "usdt_amount": amount,
+                        "decimal_odds": decimal_odds,
+                        "place_odds": place_odds_val,
                         "data_sparse": is_sparse,
                         "reasoning": rec.get("reasoning", ""),
                     })

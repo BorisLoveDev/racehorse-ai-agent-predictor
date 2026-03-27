@@ -42,3 +42,32 @@ class MenuCB(CallbackData, prefix="sm"):
     """
 
     action: str  # "help" | "balance" | "cancel"
+
+
+class TrackingCB(CallbackData, prefix="st"):
+    """Placed/tracked choice callback. Example: 'st:placed' = 9 bytes.
+
+    Used after a recommendation is shown to ask whether the user placed
+    the bets (for P&L tracking) or is only tracking for analysis.
+    """
+
+    action: str  # "placed" | "tracked"
+
+
+class ResultCB(CallbackData, prefix="sr"):
+    """Result confirmation callback. Example: 'sr:yes' = 6 bytes.
+
+    Used when confirming a parsed result before P&L evaluation.
+    """
+
+    action: str  # "yes" | "no"
+
+
+class DrawdownCB(CallbackData, prefix="sd"):
+    """Drawdown circuit breaker callback. Example: 'sd:unlock' = 9 bytes.
+
+    Used to allow the user to explicitly unlock betting during a drawdown
+    period (override circuit breaker).
+    """
+
+    action: str  # "unlock"
