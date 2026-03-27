@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-27T11:55:45.502Z"
+status: Phase complete — ready for verification
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-03-27T12:00:16.099Z"
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -59,6 +59,7 @@ Plan: 4 of 4
 | Phase 03 P01 | 375 | 3 tasks | 14 files |
 | Phase 03 P03 | 2 | 2 tasks | 3 files |
 | Phase 03 P02 | 308 | 2 tasks | 8 files |
+| Phase 03 P04 | 20 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,9 @@ Recent decisions affecting current work:
 - [Phase 03]: mindset_path parent directory created at ReflectionWriter init (not at write time) — consistent with AuditLogger pattern
 - [Phase 03]: drawdown_check_node fires as the first node in build_analysis_graph, before pre_skip_check — ensures no API credits are spent when circuit breaker is active
 - [Phase 03]: awaiting_placed_tracked state only set when final_bets is non-empty and skip_signal is False — no tracking keyboard shown on skip/empty recommendation
+- [Phase 03]: Reflection pipeline is non-blocking: try/except wraps writer+extractor, state transitions to idle BEFORE reflection to avoid blocking user if LLM is slow
+- [Phase 03]: Lesson injection prepends lessons_block to analysis prompt so LLM reads learned context before race data
+- [Phase 03]: /stats P&L display HTML-escapes ampersand as &amp; to avoid Telegram parse_mode=HTML silent failures
 
 ### Pending Todos
 
@@ -110,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T11:55:45.499Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-27T12:00:16.095Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None

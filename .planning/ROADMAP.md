@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation and Parser** — Docker service skeleton, FSM wiring, paste ingestion, LLM-based race parsing + odds normalization, scratch handling, bankroll management, audit trail
 - [x] **Phase 2: EV Engine and Analysis** — Web research, deterministic EV/Kelly math engine, AI analysis with betting labels, portfolio risk caps, uncertainty discount (completed 2026-03-26)
-- [ ] **Phase 3: Results, Reflection and Stats** — Result evaluation, placed/tracked distinction, memory-distilled AI reflection, P&L stats, drawdown circuit breaker
+- [x] **Phase 3: Results, Reflection and Stats** — Result evaluation, placed/tracked distinction, memory-distilled AI reflection, P&L stats, drawdown circuit breaker (completed 2026-03-27)
 
 ## Phase Details
 
@@ -79,13 +79,13 @@ Plans:
   6. User can request P&L stats (total, by period, win rate, ROI) for `placed` bets at any time
   7. If bankroll drops >=20% from its recorded peak, all subsequent recommendations are automatically issued as "SKIP (drawdown protection)" until user explicitly unlocks
   8. Audit log entry updated with result and P&L for this run
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [x] 03-01-PLAN.md — Pydantic models + evaluator + migrations + repositories + settings + odds fix
 - [x] 03-02-PLAN.md — Result parser + drawdown check node + result handlers + evaluation flow
 - [x] 03-03-PLAN.md — ReflectionWriter + LessonExtractor + mindset.md
-- [ ] 03-04-PLAN.md — Lesson injection into analysis + /stats command + audit integration
+- [x] 03-04-PLAN.md — Lesson injection into analysis + /stats command + audit integration
 
 ## Progress
 
@@ -96,4 +96,4 @@ Phases execute in numeric order: 1 -> 2 -> 3
 |-------|----------------|--------|-----------|
 | 1. Foundation and Parser | 5/6 | In Progress|  |
 | 2. EV Engine and Analysis | 4/4 | Complete   | 2026-03-26 |
-| 3. Results, Reflection and Stats | 3/4 | In Progress|  |
+| 3. Results, Reflection and Stats | 4/4 | Complete   | 2026-03-27 |
