@@ -1,7 +1,7 @@
 """
 Command handlers for the Stake Advisor Bot.
 
-Implements /start, /help, /cancel, /balance, and /stake commands.
+Implements /start, /help, /cancel, /balance, /stake, and /unlock_drawdown commands.
 Every response includes a balance header per BANK-04 / D-14.
 """
 
@@ -19,6 +19,7 @@ from services.stake.states import PipelineStates
 from services.stake.bankroll.repository import BankrollRepository
 from services.stake.settings import get_stake_settings
 from services.stake.keyboards.stake_kb import main_menu_kb
+from services.stake.audit.logger import AuditLogger
 
 router = Router(name="commands")
 
@@ -175,4 +176,27 @@ async def cmd_stake(message: Message) -> None:
     await message.answer(
         f"Current stake: {stake_pct * 100:.1f}% of bankroll\n"
         "To change: /stake 3 (for 3%)"
+    )
+
+
+@router.message(Command("unlock_drawdown"))
+async def cmd_unlock_drawdown(message: Message, state: FSMContext) -> None:
+    """Handle /unlock_drawdown — override the drawdown circuit breaker.
+
+    Sets drawdown_unlocked=True in SQLite so the next analysis run
+    will not be blocked by the drawdown circuit breaker. Protection
+    auto-resets when balance recovers above the threshold.
+
+    Per D-09 / RISK-01.
+    """
+    settings = get_stake_settings()
+    repo = BankrollRepository(db_path=settings.database_path)
+    repo.set_drawdown_unlocked(True)
+    audit = AuditLogger()
+    audit.log_entry("drawdown_unlocked", {"source": "command"})
+    header = balance_header(settings.database_path)
+    await message.answer(
+        f"{header}Drawdown protection unlocked.\n"
+        "Recommendations will resume on the next race paste.\n"
+        "Protection will re-activate automatically if balance drops again."
     )
