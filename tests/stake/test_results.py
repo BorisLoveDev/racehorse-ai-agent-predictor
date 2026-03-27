@@ -9,6 +9,8 @@ import pytest
 
 from services.stake.results.models import ParsedResult, BetOutcome, LessonEntry
 from services.stake.results.evaluator import evaluate_bets
+from services.stake.results.repository import BetOutcomesRepository
+from services.stake.bankroll.repository import BankrollRepository
 
 
 # ---------------------------------------------------------------------------
@@ -280,3 +282,155 @@ def test_evaluate_profit_rounded_to_4_places():
     result = ParsedResult(finishing_order=[1], is_partial=False)
     outcomes = evaluate_bets([bet], result)
     assert outcomes[0].profit_usdt == round(3.0 * 2.3 - 3.0, 4)
+
+
+# ---------------------------------------------------------------------------
+# BetOutcomesRepository tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tmp_db(tmp_path):
+    """Return a temporary SQLite db path."""
+    return str(tmp_path / "test.db")
+
+
+@pytest.fixture
+def outcomes_repo(tmp_db):
+    return BetOutcomesRepository(db_path=tmp_db)
+
+
+@pytest.fixture
+def sample_outcomes():
+    """Two bet outcome dicts — one win (won), one place (lost)."""
+    return [
+        {
+            "runner_name": "Thunder",
+            "runner_number": 3,
+            "bet_type": "win",
+            "amount_usdt": 5.0,
+            "decimal_odds": 3.5,
+            "place_odds": None,
+            "won": True,
+            "profit_usdt": 12.5,
+            "evaluable": True,
+        },
+        {
+            "runner_name": "Lightning",
+            "runner_number": 5,
+            "bet_type": "place",
+            "amount_usdt": 3.0,
+            "decimal_odds": 2.5,
+            "place_odds": 1.8,
+            "won": False,
+            "profit_usdt": -3.0,
+            "evaluable": True,
+        },
+    ]
+
+
+def test_bet_outcomes_save_and_count(outcomes_repo, sample_outcomes):
+    """BetOutcomesRepository.save_outcomes inserts correct row count."""
+    outcomes_repo.save_outcomes(run_id=1, is_placed=True, outcomes=sample_outcomes)
+    stats = outcomes_repo.get_total_stats(placed_only=True)
+    assert stats["total_bets"] == 2
+
+
+def test_bet_outcomes_get_total_stats(outcomes_repo, sample_outcomes):
+    """get_total_stats returns correct aggregation for placed-only bets."""
+    outcomes_repo.save_outcomes(run_id=1, is_placed=True, outcomes=sample_outcomes)
+    stats = outcomes_repo.get_total_stats(placed_only=True)
+    assert stats["total_bets"] == 2
+    assert stats["wins"] == 1
+    assert stats["win_rate"] == 50.0
+    # total profit = 12.5 + (-3.0) = 9.5
+    assert stats["total_profit_usdt"] == 9.5
+
+
+def test_bet_outcomes_placed_filter(outcomes_repo, sample_outcomes):
+    """placed_only=True excludes tracked-only bets (is_placed=0)."""
+    # Save as tracked only (is_placed=False)
+    outcomes_repo.save_outcomes(run_id=1, is_placed=False, outcomes=sample_outcomes)
+    stats_placed = outcomes_repo.get_total_stats(placed_only=True)
+    stats_all = outcomes_repo.get_total_stats(placed_only=False)
+    assert stats_placed["total_bets"] == 0
+    assert stats_all["total_bets"] == 2
+
+
+def test_bet_outcomes_period_stats(outcomes_repo, sample_outcomes):
+    """get_period_stats with days=7 includes today's bets."""
+    outcomes_repo.save_outcomes(run_id=1, is_placed=True, outcomes=sample_outcomes)
+    stats = outcomes_repo.get_period_stats(days=7, placed_only=True)
+    assert stats["total_bets"] == 2
+
+
+def test_bet_outcomes_empty_stats(outcomes_repo):
+    """get_total_stats returns zeros when no bets saved."""
+    stats = outcomes_repo.get_total_stats()
+    assert stats["total_bets"] == 0
+    assert stats["win_rate"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# BankrollRepository peak/drawdown tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def bankroll_repo(tmp_db):
+    repo = BankrollRepository(db_path=tmp_db)
+    return repo
+
+
+def test_peak_balance_none_initially(bankroll_repo):
+    """get_peak_balance returns None before any balance is set."""
+    bankroll_repo.set_balance(100.0)
+    # After set_balance, peak should be initialised
+    peak = bankroll_repo.get_peak_balance()
+    assert peak == 100.0
+
+
+def test_update_peak_if_higher(bankroll_repo):
+    """update_peak_if_higher tracks the maximum balance."""
+    bankroll_repo.set_balance(100.0)
+    bankroll_repo.update_peak_if_higher(150.0)
+    assert bankroll_repo.get_peak_balance() == 150.0
+    # Lower value does not change peak
+    bankroll_repo.update_peak_if_higher(80.0)
+    assert bankroll_repo.get_peak_balance() == 150.0
+
+
+def test_set_balance_updates_peak(bankroll_repo):
+    """set_balance auto-updates peak when new balance is higher."""
+    bankroll_repo.set_balance(100.0)
+    bankroll_repo.set_balance(200.0)
+    assert bankroll_repo.get_peak_balance() == 200.0
+
+
+def test_drawdown_unlocked_persistence(bankroll_repo):
+    """drawdown_unlocked flag persists across method calls."""
+    bankroll_repo.set_balance(100.0)
+    assert bankroll_repo.is_drawdown_unlocked() is False
+    bankroll_repo.set_drawdown_unlocked(True)
+    assert bankroll_repo.is_drawdown_unlocked() is True
+    bankroll_repo.set_drawdown_unlocked(False)
+    assert bankroll_repo.is_drawdown_unlocked() is False
+
+
+def test_check_and_auto_reset_drawdown(bankroll_repo):
+    """check_and_auto_reset_drawdown resets flag when balance recovers."""
+    bankroll_repo.set_balance(100.0)
+    # Simulate drawdown: balance drops to 75 (25% from peak of 100)
+    # First set peak manually via update_peak_if_higher
+    bankroll_repo.set_drawdown_unlocked(True)
+    # Set balance below threshold (20% from peak = 80)
+    bankroll_repo.set_balance(75.0)
+    # At this point, peak is 100, balance is 75 => 25% drawdown
+    # check_and_auto_reset: threshold 20% => recovery point = 80; 75 < 80 => no reset
+    bankroll_repo.check_and_auto_reset_drawdown(threshold_pct=20.0)
+    assert bankroll_repo.is_drawdown_unlocked() is True  # still unlocked
+
+    # Recover above threshold
+    bankroll_repo.set_balance(90.0)  # 10% from peak of 100, above 20% threshold
+    bankroll_repo.check_and_auto_reset_drawdown(threshold_pct=20.0)
+    assert bankroll_repo.is_drawdown_unlocked() is False  # auto-reset

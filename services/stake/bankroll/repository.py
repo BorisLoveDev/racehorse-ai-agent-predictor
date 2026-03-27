@@ -45,6 +45,7 @@ class BankrollRepository:
 
         Uses upsert to avoid duplicate rows. Preserves existing stake_pct
         when updating balance (only updates balance_usdt and updated_at).
+        Also updates peak_balance_usdt if the new balance is a new high.
 
         Args:
             balance: New balance in USDT.
@@ -74,6 +75,9 @@ class BankrollRepository:
             conn.commit()
         finally:
             conn.close()
+
+        # After updating balance, track peak
+        self.update_peak_if_higher(balance)
 
     def get_stake_pct(self) -> float:
         """Return current stake percentage, defaulting to 0.02 if not set.
@@ -112,3 +116,93 @@ class BankrollRepository:
             conn.commit()
         finally:
             conn.close()
+
+    def get_peak_balance(self) -> Optional[float]:
+        """Return peak_balance_usdt or None if not tracked yet.
+
+        Returns:
+            float peak balance in USDT, or None when no record exists.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT peak_balance_usdt FROM stake_bankroll WHERE id = 1")
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+            return None
+        finally:
+            conn.close()
+
+    def update_peak_if_higher(self, new_balance: float) -> None:
+        """Set peak_balance_usdt to MAX(current_peak, new_balance).
+
+        Uses MAX(COALESCE(peak_balance_usdt, 0), new_balance) so that the
+        first call with any balance initialises peak from zero.
+
+        Args:
+            new_balance: Candidate new peak balance in USDT.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE stake_bankroll
+                SET peak_balance_usdt = MAX(COALESCE(peak_balance_usdt, 0), ?)
+                WHERE id = 1
+                """,
+                (float(new_balance),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def is_drawdown_unlocked(self) -> bool:
+        """Return True if drawdown_unlocked = 1 for the singleton row.
+
+        Returns:
+            True when drawdown circuit breaker has been unlocked by user.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT drawdown_unlocked FROM stake_bankroll WHERE id = 1")
+            row = cursor.fetchone()
+            return bool(row[0]) if row and row[0] is not None else False
+        finally:
+            conn.close()
+
+    def set_drawdown_unlocked(self, unlocked: bool) -> None:
+        """Set the drawdown_unlocked flag on the singleton row.
+
+        Args:
+            unlocked: True to unlock (allow bets during drawdown), False to lock.
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE stake_bankroll SET drawdown_unlocked = ? WHERE id = 1",
+                (1 if unlocked else 0,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def check_and_auto_reset_drawdown(self, threshold_pct: float = 20.0) -> None:
+        """Auto-reset drawdown_unlocked when balance recovers above threshold.
+
+        If current balance >= peak * (1 - threshold_pct / 100), the drawdown
+        condition no longer applies and the flag is reset to 0 (locked).
+
+        Args:
+            threshold_pct: Drawdown threshold in percent (default 20.0).
+        """
+        balance = self.get_balance()
+        peak = self.get_peak_balance()
+        if balance is None or peak is None or peak <= 0:
+            return
+        recovery_threshold = peak * (1 - threshold_pct / 100.0)
+        if balance >= recovery_threshold:
+            self.set_drawdown_unlocked(False)

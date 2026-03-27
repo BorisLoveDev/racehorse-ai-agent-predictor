@@ -149,6 +149,44 @@ class SizingSettings(BaseModel):
     )
 
 
+class ReflectionSettings(BaseModel):
+    """Reflection and lesson extraction LLM config.
+
+    Uses pro model for final reflection — insight quality matters more than cost.
+    Per D-06 and mindset prompt system.
+    """
+
+    model: str = Field(
+        default="google/gemini-3.1-pro-preview",
+        description="OpenRouter model for reflection/lesson extraction (expensive, used post-race)"
+    )
+    temperature: float = Field(
+        default=0.7,
+        description="LLM temperature for reflection (higher for more nuanced insights)"
+    )
+    max_tokens: int = Field(
+        default=4000,
+        description="Max tokens for reflection response"
+    )
+    mindset_path: str = Field(
+        default="data/mindset.md",
+        description="Path to mindset.md file on disk for persistent rules"
+    )
+
+
+class RiskSettings(BaseModel):
+    """Drawdown circuit breaker configuration.
+
+    Controls when to pause betting due to drawdown from peak balance.
+    Per D-09 and D-10.
+    """
+
+    drawdown_threshold_pct: float = Field(
+        default=20.0,
+        description="Drawdown % from peak that triggers circuit breaker (default 20%)"
+    )
+
+
 class StakeSettings(BaseSettings):
     """Main settings for the Stake Advisor Bot service.
 
@@ -170,6 +208,8 @@ class StakeSettings(BaseSettings):
     redis: RedisSettings = Field(default_factory=RedisSettings)
     bankroll: BankrollSettings = Field(default_factory=BankrollSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
+    reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
+    risk: RiskSettings = Field(default_factory=RiskSettings)
 
     database_path: str = Field(
         default="races.db",

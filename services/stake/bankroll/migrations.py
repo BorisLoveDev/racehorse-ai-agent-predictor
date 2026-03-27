@@ -44,6 +44,46 @@ def run_stake_migrations(db_path: str = "races.db") -> None:
             )
         """)
 
+        # Phase 3: stake_bet_outcomes — one row per evaluated bet
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stake_bet_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                is_placed INTEGER NOT NULL DEFAULT 0,
+                runner_name TEXT NOT NULL,
+                runner_number INTEGER,
+                bet_type TEXT NOT NULL,
+                amount_usdt REAL NOT NULL,
+                decimal_odds REAL,
+                place_odds REAL,
+                won INTEGER NOT NULL DEFAULT 0,
+                profit_usdt REAL NOT NULL,
+                evaluable INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Phase 3: stake_lessons — extracted rules from post-race reflection
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS stake_lessons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                error_tag TEXT NOT NULL,
+                rule_sentence TEXT NOT NULL,
+                is_failure INTEGER NOT NULL DEFAULT 0,
+                application_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Phase 3: peak_balance_usdt and drawdown_unlocked columns on stake_bankroll.
+        # ALTER TABLE is not idempotent, so check column existence first.
+        cursor.execute("PRAGMA table_info(stake_bankroll)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if "peak_balance_usdt" not in cols:
+            cursor.execute("ALTER TABLE stake_bankroll ADD COLUMN peak_balance_usdt REAL")
+        if "drawdown_unlocked" not in cols:
+            cursor.execute("ALTER TABLE stake_bankroll ADD COLUMN drawdown_unlocked INTEGER DEFAULT 0")
+
         conn.commit()
 
     except Exception as e:
