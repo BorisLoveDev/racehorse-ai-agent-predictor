@@ -24,7 +24,7 @@ from services.stake.settings import get_stake_settings
 from services.stake.handlers.commands import balance_header
 from services.stake.pipeline.graph import build_pipeline_graph, build_analysis_graph
 from services.stake.pipeline.formatter import format_race_summary
-from services.stake.keyboards.stake_kb import confirm_parse_kb, bankroll_confirm_kb, bankroll_input_kb, skip_confirm_kb, tracking_kb
+from services.stake.keyboards.stake_kb import confirm_parse_kb, bankroll_confirm_kb, bankroll_input_kb, skip_confirm_kb, tracking_kb, drawdown_unlock_kb
 from services.stake.bankroll.repository import BankrollRepository
 from services.stake.audit.logger import AuditLogger
 
@@ -120,16 +120,22 @@ async def _run_analysis_inline(
 
         await state.update_data(final_bets=final_bets, run_id=run_id)
 
+        # Determine reply markup for drawdown skip messages
+        skip_tier = result.get("skip_tier")
+        reply_markup = drawdown_unlock_kb() if skip_signal and skip_tier == 0 else None
+
         # Try to edit status message with result; if too long, send new message
         try:
             await status_msg.edit_text(
                 recommendation_text,
                 parse_mode="HTML",
+                reply_markup=reply_markup,
             )
         except Exception:
             await message.answer(
                 recommendation_text,
                 parse_mode="HTML",
+                reply_markup=reply_markup,
             )
 
         # Transition to awaiting_placed_tracked if real bets exist; else idle
