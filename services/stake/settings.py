@@ -120,19 +120,19 @@ class SizingSettings(BaseModel):
     """
 
     kelly_multiplier: float = Field(
-        default=0.25,
-        description="Kelly fraction multiplier (0.25 = quarter-Kelly) per BET-02"
+        default=0.5,
+        description="Kelly fraction multiplier (0.5 = half-Kelly) per BET-02"
     )
     per_bet_cap_pct: float = Field(
-        default=0.03,
-        description="Max single bet as fraction of bankroll (3%) per BET-03"
+        default=0.05,
+        description="Max single bet as fraction of bankroll (5%) per BET-03"
     )
     max_total_exposure_pct: float = Field(
-        default=0.05,
-        description="Max total race exposure as fraction of bankroll (5%) per BET-04"
+        default=0.10,
+        description="Max total race exposure as fraction of bankroll (10%) per BET-04"
     )
     max_win_bets: int = Field(
-        default=2,
+        default=3,
         description="Max win bets per race per BET-04"
     )
     skip_overround_threshold: float = Field(

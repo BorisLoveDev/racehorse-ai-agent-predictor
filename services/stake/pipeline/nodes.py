@@ -535,6 +535,24 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
             name_key = r.get("runner_name", "").lower()
             sparse_by_name[name_key] = r.get("data_quality") in ("sparse", "none")
 
+    # Helper to look up place_odds for a runner
+    parsed_race = state.get("parsed_race")
+    parsed_runners_list = []
+    if parsed_race is not None:
+        parsed_runners_list = (
+            parsed_race.runners
+            if hasattr(parsed_race, "runners")
+            else parsed_race.get("runners", []) if isinstance(parsed_race, dict)
+            else []
+        )
+
+    def _get_place_odds(runner_num: int) -> float | None:
+        for pr in parsed_runners_list:
+            pr_num = getattr(pr, "number", None) or (pr.get("number") if isinstance(pr, dict) else None)
+            if pr_num == runner_num:
+                return getattr(pr, "place_odds", None) or (pr.get("place_odds") if isinstance(pr, dict) else None)
+        return None
+
     raw_bets: list[dict] = []
 
     for rec in analysis_result.get("recommendations", []):
@@ -545,7 +563,7 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
         runner_number = rec.get("runner_number")
         runner_name = rec.get("runner_name", "")
         ai_win_prob = rec.get("ai_win_prob", 0.0)
-        ai_place_prob = rec.get("ai_place_prob")
+        ai_place_prob = rec.get("ai_place_prob") or ai_win_prob * 1.5
 
         # Look up runner data by number first, then by name
         runner_data = runner_by_number.get(runner_number)
@@ -558,90 +576,65 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
         if decimal_odds is None:
             continue
 
-        # Determine bet_type from label
-        if label in ("highest_win_probability", "best_value"):
-            bet_type = "win"
-        else:
-            bet_type = "place"
-
-        if bet_type == "win":
-            ev_val = expected_value(ai_win_prob, decimal_odds)
-            if ev_val <= 0:
-                continue
-
-            kf = kelly_fraction(ai_win_prob, decimal_odds)
-            amount = bet_size_usdt(
-                bankroll, kf,
-                sizing.kelly_multiplier,
-                sizing.per_bet_cap_pct,
-                sizing.min_bet_usdt,
-            )
-            if amount <= 0:
-                continue
-
-        else:
-            # Place bet — find place_odds from parsed_race or skip
-            parsed_race = state.get("parsed_race")
-            place_odds_val = None
-
-            # Try to find place_odds from the parsed race runners
-            if parsed_race is not None:
-                runners_list = (
-                    parsed_race.runners
-                    if hasattr(parsed_race, "runners")
-                    else parsed_race.get("runners", []) if isinstance(parsed_race, dict)
-                    else []
-                )
-                for pr in runners_list:
-                    pr_number = getattr(pr, "number", None) or (pr.get("number") if isinstance(pr, dict) else None)
-                    if pr_number == runner_number:
-                        place_odds_val = getattr(pr, "place_odds", None) or (pr.get("place_odds") if isinstance(pr, dict) else None)
-                        break
-
-            # Estimate place probability and fallback odds
-            effective_place_prob = ai_place_prob if ai_place_prob is not None else ai_win_prob * 0.6
-
-            if place_odds_val is None:
-                # No explicit place odds available; skip place bet
-                continue
-
-            place_ev = place_bet_ev(effective_place_prob, place_odds_val)
-            if place_ev <= 0:
-                continue
-
-            # Use win Kelly for sizing (conservative) since no place-specific Kelly formula
-            kf = kelly_fraction(effective_place_prob, place_odds_val)
-            amount = bet_size_usdt(
-                bankroll, kf,
-                sizing.kelly_multiplier,
-                sizing.per_bet_cap_pct,
-                sizing.min_bet_usdt,
-            )
-            if amount <= 0:
-                continue
-
-            ev_val = place_ev
-
-        # Apply sparsity discount if research data is sparse
+        # Check sparsity early
         is_sparse = sparse_by_name.get(runner_name.lower(), False)
-        if is_sparse:
-            amount = apply_sparsity_discount(amount, True, sizing.sparsity_discount)
-            if amount <= 0:
-                continue
 
-        raw_bets.append({
-            "runner_name": runner_name,
-            "runner_number": runner_number,
-            "label": label,
-            "bet_type": bet_type,
-            "type": bet_type,   # apply_portfolio_caps uses "type" key
-            "ev": ev_val,
-            "kelly_pct": round(kf * 100, 2),
-            "amount": amount,
-            "usdt_amount": amount,
-            "data_sparse": is_sparse,
-            "reasoning": rec.get("reasoning", ""),
-        })
+        # ── Win bet ──
+        if label in ("highest_win_probability", "best_value"):
+            ev_val = expected_value(ai_win_prob, decimal_odds)
+            if ev_val > 0:
+                kf = kelly_fraction(ai_win_prob, decimal_odds)
+                amount = bet_size_usdt(
+                    bankroll, kf,
+                    sizing.kelly_multiplier,
+                    sizing.per_bet_cap_pct,
+                    sizing.min_bet_usdt,
+                )
+                if is_sparse:
+                    amount = apply_sparsity_discount(amount, True, sizing.sparsity_discount)
+                if amount > 0:
+                    raw_bets.append({
+                        "runner_name": runner_name,
+                        "runner_number": runner_number,
+                        "label": label,
+                        "bet_type": "win",
+                        "type": "win",
+                        "ev": ev_val,
+                        "kelly_pct": round(kf * 100, 2),
+                        "amount": amount,
+                        "usdt_amount": amount,
+                        "data_sparse": is_sparse,
+                        "reasoning": rec.get("reasoning", ""),
+                    })
+
+        # ── Place bet (for ALL non-no_bet runners with place_odds) ──
+        place_odds_val = _get_place_odds(runner_number)
+        if place_odds_val is not None and ai_place_prob > 0:
+            p_ev = place_bet_ev(ai_place_prob, place_odds_val)
+            if p_ev > 0:
+                kf = kelly_fraction(ai_place_prob, place_odds_val)
+                amount = bet_size_usdt(
+                    bankroll, kf,
+                    sizing.kelly_multiplier,
+                    sizing.per_bet_cap_pct,
+                    sizing.min_bet_usdt,
+                )
+                if is_sparse:
+                    amount = apply_sparsity_discount(amount, True, sizing.sparsity_discount)
+                if amount > 0:
+                    raw_bets.append({
+                        "runner_name": runner_name,
+                        "runner_number": runner_number,
+                        "label": label,
+                        "bet_type": "place",
+                        "type": "place",
+                        "ev": p_ev,
+                        "kelly_pct": round(kf * 100, 2),
+                        "amount": amount,
+                        "usdt_amount": amount,
+                        "data_sparse": is_sparse,
+                        "reasoning": rec.get("reasoning", ""),
+                    })
 
     # Sort by EV descending before portfolio caps
     raw_bets.sort(key=lambda b: b["ev"], reverse=True)

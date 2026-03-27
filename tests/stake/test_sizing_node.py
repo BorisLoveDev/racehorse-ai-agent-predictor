@@ -188,9 +188,9 @@ def test_sizing_node_total_exposure_cap(mock_repo_cls):
     bets = result.get("final_bets", [])
 
     total = sum(b["usdt_amount"] for b in bets)
-    max_exposure = bankroll * 0.05
+    max_exposure = bankroll * 0.10  # 10% cap (half-Kelly defaults)
     assert total <= max_exposure + 1e-6, (
-        f"Total exposure {total:.2f} USDT exceeds 5% cap of {max_exposure:.2f} USDT"
+        f"Total exposure {total:.2f} USDT exceeds 10% cap of {max_exposure:.2f} USDT"
     )
 
 
