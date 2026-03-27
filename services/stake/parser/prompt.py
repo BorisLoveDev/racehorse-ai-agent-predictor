@@ -71,7 +71,7 @@ Extract market-level context if present:
 6. RUNNER COUNT: Extract runner_count from the paste if shown. Do not count runners yourself.
 7. FORM STRING: Preserve the form string exactly as shown (letters and numbers), including 'x' for falls/pulled up.
 8. BET TYPES: Extract all bet type labels shown on the page into bet_types_available as a list.
-9. BANKROLL: Only extract detected_bankroll if an explicit monetary amount is clearly labelled as a balance or bankroll. Do not extract individual bet amounts or odds as bankroll.
+9. BANKROLL: Only extract detected_bankroll if an explicit monetary amount >= $1.00 is clearly labelled as a balance, bankroll, or wallet (e.g. "Balance: 100.00"). Never extract bet amounts, odds, payouts, or any amount under $1.00. When in doubt, set null.
 
 ## Example
 

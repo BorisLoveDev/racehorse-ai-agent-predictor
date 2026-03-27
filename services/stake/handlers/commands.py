@@ -38,8 +38,8 @@ def balance_header(db_path: str) -> str:
     repo = BankrollRepository(db_path=db_path)
     balance = repo.get_balance()
     if balance is not None:
-        return f"Balance: {balance:.2f} USDT\n{'─' * 30}\n"
-    return f"Balance: not set\n{'─' * 30}\n"
+        return f"Balance: {balance:.2f} USDT\n{'─' * 18}\n"
+    return f"Balance: not set\n{'─' * 18}\n"
 
 
 @router.message(CommandStart())

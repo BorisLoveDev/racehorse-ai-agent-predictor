@@ -168,6 +168,8 @@ async def test_confirm_with_detected_bankroll_triggers_bankroll_confirm():
     callback.answer = AsyncMock()
     callback.message = MagicMock()
     callback.message.answer = AsyncMock()
+    callback.message.edit_reply_markup = AsyncMock()
+    callback.message.edit_text = AsyncMock()
 
     callback_data = MagicMock()
     callback_data.action = "yes"
@@ -207,6 +209,8 @@ async def test_confirm_without_bankroll_triggers_bankroll_input():
     callback.answer = AsyncMock()
     callback.message = MagicMock()
     callback.message.answer = AsyncMock()
+    callback.message.edit_reply_markup = AsyncMock()
+    callback.message.edit_text = AsyncMock()
 
     callback_data = MagicMock()
     callback_data.action = "yes"
@@ -246,6 +250,8 @@ async def test_confirm_with_db_bankroll_transitions_to_idle():
     callback.answer = AsyncMock()
     callback.message = MagicMock()
     callback.message.answer = AsyncMock()
+    callback.message.edit_reply_markup = AsyncMock()
+    callback.message.edit_text = AsyncMock()
 
     callback_data = MagicMock()
     callback_data.action = "yes"
@@ -285,6 +291,8 @@ async def test_reject_parse_transitions_to_idle():
     callback.answer = AsyncMock()
     callback.message = MagicMock()
     callback.message.answer = AsyncMock()
+    callback.message.edit_reply_markup = AsyncMock()
+    callback.message.edit_text = AsyncMock()
 
     callback_data = MagicMock()
     callback_data.action = "no"

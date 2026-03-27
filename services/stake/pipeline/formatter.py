@@ -74,7 +74,7 @@ def format_race_summary(state: dict) -> str:
     # Runners table
     lines.append("\n<b>Runners:</b>")
     enriched = state.get("enriched_runners", [])
-    for r in enriched:
+    for r in sorted(enriched, key=lambda r: r.get("number", 0)):
         status = r.get("status", "active")
         odds_str = f"{r['decimal_odds']:.2f}" if r.get("decimal_odds") is not None else "—"
         prob_str = f"{r['implied_prob'] * 100:.1f}%" if r.get("implied_prob") is not None else "—"
@@ -168,7 +168,7 @@ def format_recommendation(state: dict) -> str:
 
     total_usdt = sum(b.get("usdt_amount", 0.0) for b in final_bets)
 
-    for bet in final_bets:
+    for bet in sorted(final_bets, key=lambda b: b.get("runner_number", 0)):
         runner_name = str(bet.get("runner_name", "Unknown"))
         runner_number = bet.get("runner_number", "?")
         label = str(bet.get("label", ""))
@@ -185,7 +185,7 @@ def format_recommendation(state: dict) -> str:
             f"<b>{html.escape(runner_name)} (#{runner_number})</b>"
         )
         lines.append(f"Label: {html.escape(label_display)}")
-        lines.append(f"Bet: {html.escape(bet_type)} — {usdt_amount:.2f} USDT")
+        lines.append(f"Bet: {html.escape(bet_type)} — <b>{usdt_amount:.2f} USDT</b>")
         lines.append(f"EV: {ev:+.2f} | Kelly: {kelly_pct:.1f}%")
         lines.append(html.escape(reasoning))
 

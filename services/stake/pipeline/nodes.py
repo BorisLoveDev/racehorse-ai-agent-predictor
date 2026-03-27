@@ -105,7 +105,8 @@ async def parse_node(state: PipelineState) -> dict[str, Any]:
 
     return {
         "parsed_race": result,
-        "detected_bankroll": result.detected_bankroll,
+        # Filter out false bankroll detections: amounts under $1 are odds/bet amounts
+        "detected_bankroll": result.detected_bankroll if result.detected_bankroll and result.detected_bankroll >= 1.0 else None,
         "ambiguous_fields": ambiguous if ambiguous else [],
     }
 

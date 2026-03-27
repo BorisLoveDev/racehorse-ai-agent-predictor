@@ -40,10 +40,13 @@ async def _run_analysis_inline(
     audit: AuditLogger,
     force_continue: bool = False,
 ) -> None:
-    """Run the Phase 2 analysis pipeline (research -> analysis -> sizing -> format).
+    """Run the Phase 2 analysis pipeline with progressive status updates.
 
-    Shared between bankroll input handler and skip-continue handler.
+    Sends a status message, then edits it with progress while the graph runs.
+    Final result either edits the status message or sends a new one if too long.
     """
+    import asyncio
+
     initial_state: dict = {
         "parsed_race": pipeline_result.get("parsed_race"),
         "enriched_runners": pipeline_result.get("enriched_runners") or [],
@@ -53,11 +56,37 @@ async def _run_analysis_inline(
         "skip_signal": False if force_continue else None,
     }
 
-    await message.answer(f"{header}Running analysis...")
+    # Send initial status message (will be edited with progress)
+    status_msg = await message.answer("Checking margins...")
+
+    # Progress steps shown while graph runs
+    progress_steps = [
+        (3, "Researching runners..."),
+        (8, "Analyzing probabilities..."),
+        (15, "Calculating bet sizes..."),
+    ]
+
+    done = asyncio.Event()
+
+    async def show_progress():
+        for delay, text in progress_steps:
+            await asyncio.sleep(delay)
+            if done.is_set():
+                return
+            try:
+                await status_msg.edit_text(text)
+            except Exception:
+                pass
 
     try:
+        # Run graph and progress in parallel
+        progress_task = asyncio.create_task(show_progress())
+
         analysis_graph = build_analysis_graph()
         result = await analysis_graph.ainvoke(initial_state)
+
+        done.set()
+        progress_task.cancel()
 
         recommendation_text = result.get(
             "recommendation_text",
@@ -65,10 +94,18 @@ async def _run_analysis_inline(
         )
 
         await state.set_state(PipelineStates.idle)
-        await message.answer(
-            recommendation_text,
-            parse_mode="HTML",
-        )
+
+        # Try to edit status message with result; if too long, send new message
+        try:
+            await status_msg.edit_text(
+                recommendation_text,
+                parse_mode="HTML",
+            )
+        except Exception:
+            await message.answer(
+                recommendation_text,
+                parse_mode="HTML",
+            )
 
         audit.log_entry("recommendation", {
             "final_bets": result.get("final_bets") or [],
@@ -78,11 +115,13 @@ async def _run_analysis_inline(
             "overround_active": pipeline_result.get("overround_active"),
         })
     except Exception as e:
+        done.set()
         logger.exception("Analysis pipeline error: %s", e)
         await state.set_state(PipelineStates.idle)
-        await message.answer(
-            f"{header}Analysis error: {str(e)}\n\nPaste new race data when ready."
-        )
+        try:
+            await status_msg.edit_text(f"Analysis error: {str(e)}\n\nPaste new race data when ready.")
+        except Exception:
+            await message.answer(f"Analysis error: {str(e)}\n\nPaste new race data when ready.")
         audit.log_entry("analysis_error", {"error": str(e)})
 
 
