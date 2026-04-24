@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OverroundThreshold(BaseModel):
@@ -51,6 +51,7 @@ class ReflectionBlockSettings(BaseModel):
 
 
 class PhaseOneSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     mode: Literal["paper", "dry_run", "live"] = "paper"
     live_unlock: bool = False
     thresholds: ThresholdSettings = Field(default_factory=ThresholdSettings)

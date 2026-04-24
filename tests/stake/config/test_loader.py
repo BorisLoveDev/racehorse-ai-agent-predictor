@@ -2,7 +2,7 @@ import pytest
 import yaml
 from pathlib import Path
 
-from services.stake.config.loader import load_config
+from services.stake.config.loader import ConfigLoadError, load_config
 from services.stake.invariants.rules import InvariantViolation
 
 
@@ -46,3 +46,31 @@ def test_missing_config_falls_back_to_env(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("STAKE_MODE", "paper")
     settings = load_config(tmp_path / "does-not-exist.yaml")
     assert settings.mode == "paper"
+
+
+def test_malformed_yaml_raises_config_load_error(tmp_path: Path):
+    cfg = tmp_path / "bad.yaml"
+    cfg.write_text("mode: paper\n  bad: : : indent")  # invalid YAML
+    with pytest.raises(ConfigLoadError):
+        load_config(cfg)
+
+
+def test_invalid_mode_value_raises_config_load_error(tmp_path: Path):
+    cfg = tmp_path / "bad_mode.yaml"
+    cfg.write_text("mode: bogus\n")
+    with pytest.raises(ConfigLoadError):
+        load_config(cfg)
+
+
+def test_dry_run_mode_is_allowed(tmp_path: Path):
+    cfg = tmp_path / "dr.yaml"
+    cfg.write_text("mode: dry_run\n")
+    settings = load_config(cfg)
+    assert settings.mode == "dry_run"
+
+
+def test_unknown_top_level_key_rejected(tmp_path: Path):
+    cfg = tmp_path / "typo.yaml"
+    cfg.write_text("mode: paper\nthrsholds: {}\n")  # typo: thrsholds
+    with pytest.raises(ConfigLoadError):
+        load_config(cfg)
