@@ -64,3 +64,6 @@ test-results/
 
 # Auto Claude data directory
 .auto-claude/
+
+# Git worktrees
+.worktrees/
