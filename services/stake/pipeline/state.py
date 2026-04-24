@@ -68,3 +68,24 @@ class PipelineState(TypedDict, total=False):
     analysis_result: Optional[dict]       # AnalysisResult.model_dump()
     final_bets: Optional[List[dict]]      # List of BetRecommendation dicts after portfolio caps
     recommendation_text: Optional[str]    # Formatted recommendation for Telegram
+
+    # Phase 1 v1.0-spec fields
+    race_id: Optional[str]
+    user_id: Optional[int]
+    source_type: Optional[str]                # "text" | "screenshot" | "photo" | "voice"
+    probabilities: Optional[List[dict]]       # RunnerProb.model_dump() entries
+    llm_adjustments: Optional[List[dict]]     # LLMAdjustment.model_dump() entries
+    bet_intents: Optional[List[dict]]         # BetIntent.model_dump() entries
+    proposed_bet_slips: Optional[List[dict]]  # ProposedBetSlip.model_dump() entries
+    final_proposed_slips: Optional[List[dict]]  # Filtered by decision_maker
+    decision_rationale: Optional[str]
+    bet_slip_ids: Optional[List[str]]
+    approval_decisions: Optional[List[str]]
+    kill_requested: Optional[bool]
+    gate_decision: Optional[str]
+    gate_ask_pending: Optional[bool]
+    audit_trace_id: Optional[str]
+    result_outcome: Optional[dict]            # {horse_no: finishing_position}
+    settlement_pnl: Optional[float]
+    reflection_summary: Optional[dict]
+    missing_fields: Optional[List[str]]
