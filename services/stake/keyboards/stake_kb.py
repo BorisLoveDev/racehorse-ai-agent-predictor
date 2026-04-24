@@ -82,6 +82,21 @@ def result_confirm_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def report_result_kb() -> InlineKeyboardMarkup:
+    """Offer to collect race result even when no bet was placed.
+
+    Used on 'No +EV bets' cards so the bot can still gather outcomes for
+    calibration. User picks Report (paste positions) or Skip (dismiss).
+    Uses TrackingCB with a new 'report_only' action so the existing results
+    router can bind it without a new callback type.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Report Result", callback_data=TrackingCB(action="report_only"))
+    builder.button(text="Skip", callback_data=TrackingCB(action="skip_result"))
+    builder.adjust(2)
+    return builder.as_markup()
+
+
 def drawdown_unlock_kb() -> InlineKeyboardMarkup:
     """Unlock drawdown protection inline button."""
     builder = InlineKeyboardBuilder()

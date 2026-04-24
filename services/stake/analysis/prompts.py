@@ -42,4 +42,22 @@ SKIP SIGNALS:
 
 If research found significantly different external odds for any runner, include a note in market_discrepancy_notes.
 
-Be direct and analytical. Focus on identifying the best opportunities for portfolio coverage across win and place markets."""
+EXOTIC BET RECOMMENDATIONS (exotic_recommendations) — STRUCTURED:
+- The prompt header lists `Bet types available on Stake.com for this race` — this is your bet-type pool. You MUST pick recommendations ONLY from that pool.
+- Allowed market values (must match exactly): win, place, quinella, exacta, exacta_box, trifecta, trifecta_box, first4, first4_box, qps, double, quaddie.
+- Output 1-3 `exotic_recommendations` entries when >= 4 active runners AND at least one exotic market is in the available pool. Each entry has: market, selections (list of horse numbers), confidence (0..1), rationale (one sentence, <=25 words).
+- Order of `selections` matters for exacta / trifecta / first4 — #1 finishes first, #2 second, etc. For `*_box`, `quinella`, `qps`, selections are unordered.
+- Choose based on where AI probabilities beat implied odds most decisively. Heavily overpriced favourites often create structural value in exacta/trifecta behind them.
+- Do NOT invent horse numbers — only use numbers that appear in the runner list above.
+- Do NOT include stake amounts. Sizing is separate.
+- Legacy `exotic_suggestions` (free strings) is kept only for backward compatibility; prefer the structured list.
+
+Example (if the available pool is {win, place, exacta, trifecta_box, first4}):
+    exotic_recommendations: [
+      {"market": "trifecta_box", "selections": [3, 7, 9], "confidence": 0.55,
+       "rationale": "Top 3 AI probs cluster tightly within 4pp — box captures order risk cheaply."},
+      {"market": "exacta", "selections": [3, 7], "confidence": 0.40,
+       "rationale": "Fav dominant on AI, #7 clear second pick at generous price vs implied."},
+    ]
+
+Be direct and analytical. Focus on identifying the best opportunities for portfolio coverage across win, place, AND exotic markets."""

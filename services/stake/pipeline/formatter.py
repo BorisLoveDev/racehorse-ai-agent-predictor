@@ -230,6 +230,29 @@ def _format_no_bets_analysis(state: dict, analysis_result: dict) -> str:
         for note in discrepancy_notes:
             lines.append(f"• {html.escape(str(note))}")
 
+    exotic_struct = analysis_result.get("exotic_recommendations") or []
+    exotic_free = analysis_result.get("exotic_suggestions") or []
+    if exotic_struct:
+        lines.append("")
+        lines.append("<b>Exotic Ideas</b> (not sized — place manually if you like):")
+        for rec in exotic_struct:
+            if not isinstance(rec, dict):
+                continue
+            market = str(rec.get("market") or "").replace("_", " ")
+            selections = rec.get("selections") or []
+            sel_str = "-".join(str(s) for s in selections)
+            confidence = rec.get("confidence")
+            rationale = str(rec.get("rationale") or "").strip()
+            prefix = f"<b>{html.escape(market.upper())}</b> {html.escape(sel_str)}"
+            if isinstance(confidence, (int, float)):
+                prefix += f" (conf {float(confidence) * 100:.0f}%)"
+            lines.append(f"• {prefix} — {html.escape(rationale)}")
+    elif exotic_free:
+        lines.append("")
+        lines.append("<b>Exotic Ideas</b> (not sized — place manually if you like):")
+        for hint in exotic_free:
+            lines.append(f"• {html.escape(str(hint))}")
+
     ai_override = analysis_result.get("ai_override")
     override_reason = analysis_result.get("override_reason")
     if ai_override and isinstance(override_reason, str) and override_reason.strip():
@@ -309,6 +332,30 @@ def format_recommendation(state: dict) -> str:
         lines.append("<b>Market Notes:</b>")
         for note in discrepancy_notes:
             lines.append(f"• {html.escape(str(note))}")
+
+    # ── Exotic bet ideas ──────────────────────────────────────────────────────
+    exotic_struct = analysis_result.get("exotic_recommendations") or []
+    exotic_free = analysis_result.get("exotic_suggestions") or []
+    if exotic_struct:
+        lines.append("")
+        lines.append("<b>Exotic Ideas</b> (not sized — place manually if you like):")
+        for rec in exotic_struct:
+            if not isinstance(rec, dict):
+                continue
+            market = str(rec.get("market") or "").replace("_", " ")
+            selections = rec.get("selections") or []
+            sel_str = "-".join(str(s) for s in selections)
+            confidence = rec.get("confidence")
+            rationale = str(rec.get("rationale") or "").strip()
+            prefix = f"<b>{html.escape(market.upper())}</b> {html.escape(sel_str)}"
+            if isinstance(confidence, (int, float)):
+                prefix += f" (conf {float(confidence) * 100:.0f}%)"
+            lines.append(f"• {prefix} — {html.escape(rationale)}")
+    elif exotic_free:
+        lines.append("")
+        lines.append("<b>Exotic Ideas</b> (not sized — place manually if you like):")
+        for hint in exotic_free:
+            lines.append(f"• {html.escape(str(hint))}")
 
     # ── Total exposure summary ────────────────────────────────────────────────
     lines.append("")

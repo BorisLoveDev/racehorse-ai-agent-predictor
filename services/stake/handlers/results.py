@@ -39,29 +39,54 @@ async def handle_tracking_choice(
     callback_data: TrackingCB,
     state: FSMContext,
 ) -> None:
-    """Handle Placed/Tracked keyboard tap after recommendation.
+    """Handle Placed / Tracked / Report-Only / Skip-Result keyboard taps.
 
-    Stores the user's choice (is_placed) and transitions FSM to awaiting_result.
-    Removes the keyboard buttons to prevent duplicate taps.
+    Actions:
+        placed       — user bet the recommendation; P&L will be tracked.
+        tracked      — recommendation was shown but not bet.
+        report_only  — no bet was recommended (No +EV card); user still
+                       wants to share the result for calibration.
+        skip_result  — dismiss and go idle.
+
+    All except skip_result transition FSM to awaiting_result so the next
+    text message is parsed as race result.
     """
     await callback.answer()
-    # Remove keyboard buttons
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
 
-    is_placed = callback_data.action == "placed"
+    action = callback_data.action
+
+    if action == "skip_result":
+        await state.set_state(PipelineStates.idle)
+        await callback.message.answer(
+            "OK, skipping result. Paste a new race when ready."
+        )
+        return
+
+    is_placed = action == "placed"
     await state.update_data(is_placed=is_placed)
     await state.set_state(PipelineStates.awaiting_result)
 
-    label = "PLACED" if is_placed else "TRACKED"
-    await callback.message.answer(
-        f"Marked as <b>{label}</b>.\n\n"
-        "When the race finishes, paste the result here.\n"
-        "Examples: <code>3,5,11,12</code> or <code>Thunder won</code>",
-        parse_mode="HTML",
-    )
+    if action == "report_only":
+        label = "TRACKED (no bet)"
+        prompt = (
+            f"Marked as <b>{label}</b>.\n\n"
+            "When the race finishes, paste the finishing order.\n"
+            "Examples: <code>3,5,11,12</code>, <code>1 3 5 2 4</code>, "
+            "or <code>Результат 1 3 5</code>"
+        )
+    else:
+        label = "PLACED" if is_placed else "TRACKED"
+        prompt = (
+            f"Marked as <b>{label}</b>.\n\n"
+            "When the race finishes, paste the result here.\n"
+            "Examples: <code>3,5,11,12</code> or <code>Thunder won</code>"
+        )
+
+    await callback.message.answer(prompt, parse_mode="HTML")
 
 
 @router.message(PipelineStates.awaiting_result, F.text)

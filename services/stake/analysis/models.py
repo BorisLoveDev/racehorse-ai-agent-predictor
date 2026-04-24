@@ -85,6 +85,41 @@ class RunnerAnalysis(BaseModel):
     )
 
 
+ExoticMarket = Literal[
+    "win", "place",
+    "quinella", "exacta", "exacta_box",
+    "trifecta", "trifecta_box",
+    "first4", "first4_box",
+    "qps", "double", "quaddie",
+]
+
+
+class ExoticRecommendation(BaseModel):
+    """Structured exotic bet idea the AI picks from bet_types_available.
+
+    The analyst is given the full bet-type pool available on Stake.com for
+    THIS race (via parsed_race.bet_types_available) and returns one record
+    per exotic it wants to suggest. Sizing is NOT computed here — legacy
+    sizer only handles win/place straight bets. The user places exotics
+    manually for now; downstream Phase 3 wires structured exotic sizing.
+    """
+
+    market: ExoticMarket = Field(
+        description="Bet type chosen from bet_types_available. Use 'win' or 'place' only when the exotic pool is unusable for this race."
+    )
+    selections: list[int] = Field(
+        min_length=1,
+        description="Horse numbers to include, in display order. For exacta/trifecta order matters; for boxes and quinellas it does not.",
+    )
+    confidence: float = Field(
+        ge=0.0, le=1.0,
+        description="AI subjective confidence this exotic is the best play for its market (0..1)."
+    )
+    rationale: str = Field(
+        description="One-sentence reason (<=25 words) — why this exotic now."
+    )
+
+
 class AnalysisResult(BaseModel):
     """Aggregated AI analysis result for the race.
 
@@ -110,6 +145,25 @@ class AnalysisResult(BaseModel):
     market_discrepancy_notes: list[str] = Field(
         default_factory=list,
         description="Notes on differences between Stake.com odds and external market odds (D-15, ANALYSIS-05)"
+    )
+    exotic_suggestions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Legacy free-text exotic ideas — kept for backward compatibility. "
+            "Prefer `exotic_recommendations` (structured). If both are populated, "
+            "the structured field wins."
+        ),
+    )
+    exotic_recommendations: list["ExoticRecommendation"] = Field(
+        default_factory=list,
+        description=(
+            "Structured exotic picks chosen from the race's bet_types_available "
+            "pool. The AI must output 1-3 recommendations when at least one "
+            "exotic type is available and the race has >= 4 active runners. "
+            "Each recommendation names a specific market, selections (horse "
+            "numbers), confidence, and rationale. Surfaced even when straight "
+            "win/place are -EV."
+        ),
     )
 
 
