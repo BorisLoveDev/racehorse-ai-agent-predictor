@@ -232,6 +232,7 @@ from services.stake.pipeline.nodes.decision_maker import make_decision_maker_nod
 from services.stake.pipeline.nodes.interrupt_approval import make_interrupt_approval_node
 from services.stake.pipeline.nodes.result_recorder import make_result_recorder_node
 from services.stake.pipeline.nodes.settlement import make_settlement_node
+from services.stake.pipeline.nodes.reflection_update import make_reflection_update_node
 
 
 async def _ingest_node(state: PipelineState) -> dict:
@@ -313,7 +314,14 @@ def compile_race_graph(
             paper_mode=(settings.mode == "paper"),
         ),
     )
-    g.add_node("reflection_update", _noop_node)  # Task 18
+    g.add_node(
+        "reflection_update",
+        make_reflection_update_node(
+            writer=reflection_writer,
+            traces_repo=traces_repo,
+            recorder_provider=recorder_provider,
+        ),
+    )
 
     g.set_entry_point("ingest")
     g.add_edge("ingest", "parse")
