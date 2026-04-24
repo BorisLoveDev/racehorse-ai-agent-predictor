@@ -79,11 +79,11 @@ Extract market-level context if present:
 8. BET TYPES: Extract all bet type labels shown on the page into bet_types_available as a list.
 9. BANKROLL: Only extract detected_bankroll if an explicit monetary amount >= $1.00 is clearly labelled as a balance, bankroll, or wallet (e.g. "Balance: 100.00"). Never extract bet amounts, odds, payouts, or any amount under $1.00. When in doubt, set null.
 
-## Multilingual Example
+## Multilingual Example (literal extraction only)
 
 Given paste with "Заезд 5 — Стамбул 1400м, Лошадь #3 Thunder 4.50, Жокей: М. Кая":
-- track: "Istanbul" (transliterated from Стамбул — Veliefendi assumed)
-- region: "Turkey"
+- track: "Istanbul"  (transliterated from the literal city "Стамбул" — NOT the Veliefendi venue, which is nowhere in the text)
+- region: "Turkey"   (the city is literally named, so we fill region)
 - race_number: "Заезд 5" (or "Race 5")
 - distance: "1400m"
 - runners[0].number: 3
@@ -91,7 +91,9 @@ Given paste with "Заезд 5 — Стамбул 1400м, Лошадь #3 Thunde
 - runners[0].win_odds: 4.5
 - runners[0].jockey: "M. Kaya" (transliterated)
 
-Do NOT set track=null here just because the text is in Russian. The city name "Стамбул" (Istanbul) is enough.
+Counter-example: if the paste only says "Заезд в Турции" (no city, only country) then track MUST be null. Do not guess "Istanbul" from the Turkish language of the paste or from the country alone. The clarification flow will ask.
+
+Another counter-example: if the paste is in Russian but has no city name at all ("3 заезд, 5 лошадей, Thunder 3.50..."), track is null. Cyrillic script by itself is NOT a Russia hint.
 
 ## Example
 

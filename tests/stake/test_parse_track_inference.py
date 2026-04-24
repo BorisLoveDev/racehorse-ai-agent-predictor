@@ -12,15 +12,16 @@ from services.stake.pipeline.nodes.legacy import _infer_track_from_text
 
 
 @pytest.mark.parametrize("raw,expected_track,expected_region", [
-    # Cyrillic inputs — the original bug
-    ("Заезд 5 Стамбул 1400м, Thunder 4.50", "Istanbul (Veliefendi)", "Turkey"),
-    ("МОСКВА заезд 3, Хорс 5.00", "Moscow Hippodrome", "Russia"),
-    # Turkish Latin
-    ("Race 2 — Istanbul, 1600m", "Istanbul (Veliefendi)", "Turkey"),
-    ("Veliefendi R3 1200m", "Veliefendi (Istanbul)", "Turkey"),
+    # Cyrillic city — return the transliterated CITY, not the venue
+    ("Заезд 5 Стамбул 1400м, Thunder 4.50", "Istanbul", "Turkey"),
+    ("МОСКВА заезд 3, Хорс 5.00", "Moscow", "Russia"),
+    # Turkish Latin city
+    ("Race 2 — Istanbul, 1600m", "Istanbul", "Turkey"),
+    # Named venue literally in paste → keep venue name
+    ("Veliefendi R3 1200m", "Veliefendi", "Turkey"),
     # Turkish dotted i
-    ("İstanbul Hipodromu R1", "Istanbul (Veliefendi)", "Turkey"),
-    # UK
+    ("İstanbul Hipodromu R1", "Istanbul", "Turkey"),
+    # UK / Ireland
     ("Ascot R5 1m4f", "Ascot", "UK"),
     ("Cheltenham gold cup", "Cheltenham", "UK"),
     # France
@@ -48,12 +49,27 @@ def test_infer_track_handles_empty_input():
 
 
 def test_infer_track_first_match_wins():
-    """When two venues appear (e.g. paste mentions both), the first entry in
-    the hint table is selected. This is an intentional heuristic — we bias
-    toward the more specific venue (Veliefendi beats plain Istanbul because
-    Istanbul appears first but Veliefendi reads more venue-specific)."""
+    """Both 'Istanbul' and 'Veliefendi' in the paste → the first matching
+    entry in the hint table wins. Either value is a valid literal
+    extraction — we're just asserting the output is stable and a literal
+    substring of the paste (no inference)."""
     result = _infer_track_from_text("Istanbul races at Veliefendi R3")
     assert result is not None
-    # Either answer is acceptable — venue name is valid, region is correct.
-    assert result["track"] in ("Istanbul (Veliefendi)", "Veliefendi (Istanbul)")
+    assert result["track"] in {"Istanbul", "Veliefendi"}
     assert result["region"] == "Turkey"
+
+
+def test_infer_track_country_only_returns_none():
+    """Strict rule: country name alone (no city or venue) is NOT enough.
+    The clarification flow must ask — we never guess a city from a country."""
+    # 'Turkey' is not in the hint table; country-only pastes should fall through.
+    assert _infer_track_from_text("Race at some Turkey track 1500m") is None
+
+
+def test_infer_track_does_not_invent_venue_from_city():
+    """City-only paste must return the city, not a venue inferred from it.
+    Regression guard against re-introducing the 'Istanbul (Veliefendi)' mapping."""
+    result = _infer_track_from_text("Стамбул 3 заезд")
+    assert result is not None
+    assert "Veliefendi" not in result["track"]
+    assert result["track"] == "Istanbul"

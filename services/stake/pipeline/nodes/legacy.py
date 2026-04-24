@@ -64,27 +64,27 @@ def _bankroll_repo_cls():
     )
 
 
-# Lightweight venue inference table — extended opportunistically.
-# Keys are substrings (case-insensitive, NFKC-normalized) seen in raw pastes
-# across any language; the first matching entry wins. Ordering matters when
-# one city is a substring of another — put specific entries first.
+# Literal city / venue substring table. ONLY matches strings that literally
+# appear in the paste (case-insensitive). The output is the SAME token that
+# matched — no city → venue inference (e.g. "Стамбул" returns "Istanbul",
+# not "Veliefendi", per the strict-extraction rule). Named tracks that ARE
+# literally in the paste (e.g. "Veliefendi", "Flemington") return themselves.
 _VENUE_HINTS: list[dict[str, str]] = [
-    # Turkey
-    {"match": "стамбул",   "track": "Istanbul (Veliefendi)", "region": "Turkey"},
-    {"match": "istanbul",  "track": "Istanbul (Veliefendi)", "region": "Turkey"},
-    {"match": "i̇stanbul", "track": "Istanbul (Veliefendi)", "region": "Turkey"},
-    {"match": "veliefendi","track": "Veliefendi (Istanbul)", "region": "Turkey"},
-    {"match": "измир",     "track": "Izmir",                 "region": "Turkey"},
-    {"match": "izmir",     "track": "Izmir",                 "region": "Turkey"},
-    {"match": "бурса",     "track": "Bursa",                 "region": "Turkey"},
-    {"match": "bursa",     "track": "Bursa",                 "region": "Turkey"},
-    {"match": "анкара",    "track": "Ankara",                "region": "Turkey"},
-    {"match": "ankara",    "track": "Ankara",                "region": "Turkey"},
+    # Turkey — Cyrillic / Turkish / Latin city names + the one hippodrome
+    {"match": "стамбул",   "track": "Istanbul",   "region": "Turkey"},
+    {"match": "istanbul",  "track": "Istanbul",   "region": "Turkey"},
+    {"match": "i̇stanbul", "track": "Istanbul",   "region": "Turkey"},
+    {"match": "veliefendi","track": "Veliefendi", "region": "Turkey"},
+    {"match": "измир",     "track": "Izmir",      "region": "Turkey"},
+    {"match": "izmir",     "track": "Izmir",      "region": "Turkey"},
+    {"match": "бурса",     "track": "Bursa",      "region": "Turkey"},
+    {"match": "bursa",     "track": "Bursa",      "region": "Turkey"},
+    {"match": "анкара",    "track": "Ankara",     "region": "Turkey"},
+    {"match": "ankara",    "track": "Ankara",     "region": "Turkey"},
     # Russia
-    {"match": "москва",        "track": "Moscow Hippodrome", "region": "Russia"},
-    {"match": "moscow",        "track": "Moscow Hippodrome", "region": "Russia"},
-    {"match": "цми",           "track": "Moscow Hippodrome", "region": "Russia"},
-    # UK / IRE
+    {"match": "москва",    "track": "Moscow",     "region": "Russia"},
+    {"match": "moscow",    "track": "Moscow",     "region": "Russia"},
+    # UK / Ireland
     {"match": "ascot",      "track": "Ascot",      "region": "UK"},
     {"match": "cheltenham", "track": "Cheltenham", "region": "UK"},
     {"match": "newmarket",  "track": "Newmarket",  "region": "UK"},
@@ -113,11 +113,13 @@ _VENUE_HINTS: list[dict[str, str]] = [
 
 
 def _infer_track_from_text(raw_text: str) -> dict[str, str] | None:
-    """Best-effort venue inference from raw paste text.
+    """Literal substring match on a curated venue/city table.
 
-    Called only when the LLM returned track=None. Uses a curated hint table
-    so multilingual pastes (Cyrillic, Turkish, etc.) don't trigger the
-    'what is the track?' clarification loop for well-known venues.
+    Called only when the LLM returned track=None. Performs a CASE-INSENSITIVE
+    literal substring check — no language heuristic, no city→venue inference.
+    If the paste literally contains e.g. "Стамбул" we return the transliterated
+    city "Istanbul" (not "Veliefendi"). If the paste contains neither city
+    nor venue, we return None and the clarification flow asks.
     """
     if not raw_text:
         return None
