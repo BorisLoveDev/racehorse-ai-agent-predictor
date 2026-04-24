@@ -126,6 +126,119 @@ _LABEL_DISPLAY: dict[str, str] = {
 }
 
 
+def _format_no_bets_analysis(state: dict, analysis_result: dict) -> str:
+    """Render a useful 'no +EV bets' card instead of a blank refusal.
+
+    User paid for the research + analysis; they deserve to see what the AI
+    found even when every runner's EV was negative after the bookmaker margin.
+    Shows: market margin, AI-ranked runners with probabilities + labels +
+    reasoning, market-discrepancy notes, overall race context.
+    """
+    lines: list[str] = []
+
+    # Header — why we're not betting
+    overround_active = state.get("overround_active")
+    margin_pct = None
+    if overround_active is not None:
+        try:
+            margin_pct = (float(overround_active) - 1.0) * 100.0
+        except (TypeError, ValueError):
+            margin_pct = None
+
+    lines.append("<b>No +EV bets</b>")
+    if margin_pct is not None:
+        lines.append(
+            f"Bookmaker margin {margin_pct:.1f}% — no runner's AI probability "
+            f"beats the implied price. Showing AI analysis for reference."
+        )
+    else:
+        lines.append("No runner's AI probability beats the implied price. AI analysis below.")
+
+    # AI-ranked runners
+    recs = analysis_result.get("recommendations") or []
+    active_odds: dict[int, float] = {}
+    for r in (state.get("enriched_runners") or []):
+        n = r.get("number")
+        odds = r.get("win_odds") or r.get("decimal_odds")
+        if n is not None and odds:
+            try:
+                active_odds[int(n)] = float(odds)
+            except (TypeError, ValueError):
+                pass
+
+    def _sort_key(rec: dict) -> float:
+        return -float(rec.get("ai_win_prob") or 0.0)
+
+    ranked = sorted(
+        (r for r in recs if (r.get("label") or "") != "no_bet"),
+        key=_sort_key,
+    )
+    # Fall back to showing everyone if every runner is "no_bet" labeled
+    if not ranked:
+        ranked = sorted(recs, key=_sort_key)
+
+    # Show up to 3 for readability
+    top = ranked[:3]
+    if top:
+        lines.append("")
+        lines.append("<b>AI Ranking</b> (no bet placed):")
+        for rec in top:
+            name = str(rec.get("runner_name") or "?")
+            number = rec.get("runner_number", "?")
+            label = str(rec.get("label") or "no_bet")
+            label_display = _LABEL_DISPLAY.get(label, label)
+            ai_win = rec.get("ai_win_prob")
+            ai_place = rec.get("ai_place_prob")
+            reasoning = str(rec.get("reasoning") or "").strip()
+
+            price_line = ""
+            try:
+                odds = active_odds.get(int(number)) if number not in (None, "?") else None
+            except (TypeError, ValueError):
+                odds = None
+            if odds:
+                implied = 1.0 / odds
+                edge_pp = (float(ai_win or 0.0) - implied) * 100.0 if ai_win is not None else None
+                price_line = f"Price {odds:.2f} (implied {implied * 100:.1f}%)"
+                if edge_pp is not None:
+                    price_line += f" | AI edge {edge_pp:+.1f}pp"
+
+            lines.append("")
+            lines.append(f"<b>{html.escape(name)} (#{number})</b> — {html.escape(label_display)}")
+            prob_bits: list[str] = []
+            if ai_win is not None:
+                prob_bits.append(f"AI win {float(ai_win) * 100:.1f}%")
+            if ai_place is not None:
+                prob_bits.append(f"place {float(ai_place) * 100:.1f}%")
+            if prob_bits:
+                lines.append(" | ".join(prob_bits))
+            if price_line:
+                lines.append(price_line)
+            if reasoning:
+                lines.append(html.escape(reasoning))
+
+    # Race-level AI notes
+    overall_notes = analysis_result.get("overall_notes")
+    if isinstance(overall_notes, str) and overall_notes.strip():
+        lines.append("")
+        lines.append(f"<i>{html.escape(overall_notes.strip())}</i>")
+
+    discrepancy_notes = analysis_result.get("market_discrepancy_notes") or []
+    if discrepancy_notes:
+        lines.append("")
+        lines.append("<b>Market Notes:</b>")
+        for note in discrepancy_notes:
+            lines.append(f"• {html.escape(str(note))}")
+
+    ai_override = analysis_result.get("ai_override")
+    override_reason = analysis_result.get("override_reason")
+    if ai_override and isinstance(override_reason, str) and override_reason.strip():
+        lines.append("")
+        lines.append(f"<b>AI Override:</b> {html.escape(override_reason.strip())}")
+
+    return "\n".join(lines)
+
+
 def format_recommendation(state: dict) -> str:
     """Format Phase 2 bet recommendations as Telegram HTML.
 
@@ -156,12 +269,9 @@ def format_recommendation(state: dict) -> str:
     final_bets = state.get("final_bets") or []
     analysis_result = state.get("analysis_result") or {}
 
-    # ── No bets case ─────────────────────────────────────────────────────────
+    # ── No bets case — show AI analysis instead of empty "No Bets" ───────────
     if not final_bets:
-        return (
-            "<b>No Bets</b>\n\n"
-            "All runners are negative EV at current odds. No recommended bets."
-        )
+        return _format_no_bets_analysis(state, analysis_result)
 
     # ── Runner cards ─────────────────────────────────────────────────────────
     lines: list[str] = ["<b>Bet Recommendations</b>"]
