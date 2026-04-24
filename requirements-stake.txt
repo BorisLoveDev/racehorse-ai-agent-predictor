@@ -18,3 +18,8 @@ redis>=5.0.0
 
 # HTTP (transitive dep of langchain, explicit for clarity)
 aiohttp>=3.9.0
+
+# Phase 1: persistent graph state (LangGraph checkpointer)
+langgraph-checkpoint-sqlite>=1.0.0
+aiosqlite>=0.19
+pyyaml>=6.0
