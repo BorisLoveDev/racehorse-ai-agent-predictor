@@ -17,8 +17,13 @@ Extract data into the following fields exactly. Return ONLY a JSON object matchi
 
 - platform: string or null — Betting platform name (e.g. "Stake.com", "Stake"). null if not present.
 - sport: string or null — Sport type (e.g. "Horse Racing", "Thoroughbred"). null if not present.
-- region: string or null — Country or region of the race (e.g. "Australia", "UK", "Ireland"). null if not present.
-- track: string or null — Racetrack/venue name (e.g. "Flemington", "Randwick"). null if not present.
+- region: string or null — Country or region of the race (e.g. "Australia", "UK", "Ireland", "Turkey", "Russia", "France"). If you see a city name (e.g. "Istanbul", "Стамбул", "Moscow", "Chantilly"), infer the country and fill region accordingly. null only if there is genuinely zero geographical hint in the text.
+- track: string or null — Racetrack/venue name. Extract AGGRESSIVELY: if ANY place name is present in the text — city name, hippodrome name, venue name — in ANY language or script (Latin, Cyrillic, Turkish, Arabic, Chinese, etc.), USE IT. Transliterate non-Latin scripts to Latin (e.g. "Стамбул" → "Istanbul"; "Москва" → "Moscow"; "Париж" → "Paris"). Common heuristics:
+    * Turkish races in Istanbul run at Veliefendi — if the text mentions "Istanbul" / "İstanbul" / "Стамбул" and no more specific venue, return "Veliefendi (Istanbul)".
+    * Russian races in Moscow run at the Central Moscow Hippodrome — if "Moscow" / "Москва" / "ЦМИ" appears, return "Moscow Hippodrome".
+    * If only the city is clear and the track isn't named, return the CITY as the track (e.g. "Istanbul", "Moscow", "Paris"). This is better than null.
+    * Examples of tracks by language: Flemington, Randwick (AU); Ascot, Cheltenham (UK); Chantilly, Longchamp (FR); Veliefendi (TR); Hipódromo de San Isidro (AR); Tokyo, Nakayama (JP).
+    Return null ONLY when the text literally contains no venue, city, region, or country hint. Do not return null just because the text is in a non-English language — race cards in Russian, Turkish, Cyrillic, etc. still contain extractable track information.
 - race_number: string or null — Race number as displayed (e.g. "Race 3", "R3", "3"). null if not present.
 - race_name: string or null — Official race name/title. null if not present.
 - date: string or null — Race date as shown in the text. null if not present.
@@ -72,6 +77,20 @@ Extract market-level context if present:
 7. FORM STRING: Preserve the form string exactly as shown (letters and numbers), including 'x' for falls/pulled up.
 8. BET TYPES: Extract all bet type labels shown on the page into bet_types_available as a list.
 9. BANKROLL: Only extract detected_bankroll if an explicit monetary amount >= $1.00 is clearly labelled as a balance, bankroll, or wallet (e.g. "Balance: 100.00"). Never extract bet amounts, odds, payouts, or any amount under $1.00. When in doubt, set null.
+
+## Multilingual Example
+
+Given paste with "Заезд 5 — Стамбул 1400м, Лошадь #3 Thunder 4.50, Жокей: М. Кая":
+- track: "Istanbul" (transliterated from Стамбул — Veliefendi assumed)
+- region: "Turkey"
+- race_number: "Заезд 5" (or "Race 5")
+- distance: "1400m"
+- runners[0].number: 3
+- runners[0].name: "Thunder"
+- runners[0].win_odds: 4.5
+- runners[0].jockey: "M. Kaya" (transliterated)
+
+Do NOT set track=null here just because the text is in Russian. The city name "Стамбул" (Istanbul) is enough.
 
 ## Example
 

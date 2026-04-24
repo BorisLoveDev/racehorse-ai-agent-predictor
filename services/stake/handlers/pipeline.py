@@ -138,12 +138,27 @@ async def _run_analysis_inline(
                 reply_markup=reply_markup,
             )
 
-        # Transition to awaiting_placed_tracked if real bets exist; else idle
+        # Transition:
+        #  - real bets: awaiting_placed_tracked (Placed/Tracked choice)
+        #  - no bets and not a skip_signal card: offer Report-result for
+        #    calibration (user can paste finishing positions)
+        #  - skip_signal: idle (skip message is self-contained)
         if final_bets and not skip_signal:
             await state.set_state(PipelineStates.awaiting_placed_tracked)
             await message.answer(
                 "Mark this recommendation:",
                 reply_markup=tracking_kb(),
+            )
+        elif not skip_signal:
+            # No +EV bets case — still offer to collect the result so future
+            # calibration improves. Defaults to "tracked only" until user
+            # taps Report Result.
+            from services.stake.keyboards.stake_kb import report_result_kb
+            await state.set_state(PipelineStates.awaiting_placed_tracked)
+            await message.answer(
+                "No bet placed, but you can still share the finishing order "
+                "for calibration:",
+                reply_markup=report_result_kb(),
             )
         else:
             await state.set_state(PipelineStates.idle)

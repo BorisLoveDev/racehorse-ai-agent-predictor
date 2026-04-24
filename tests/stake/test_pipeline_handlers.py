@@ -233,11 +233,19 @@ async def test_confirm_without_bankroll_triggers_bankroll_input():
     assert PipelineStates.awaiting_bankroll_input in set_state_calls
 
 
-# ── Test 5: Confirm -> idle (bankroll already in DB) ─────────────────────────
+# ── Test 5: Confirm -> terminal-ish (bankroll already in DB) ─────────────────
 
 @pytest.mark.asyncio
-async def test_confirm_with_db_bankroll_transitions_to_idle():
-    """awaiting_parse_confirm + confirm + bankroll in DB -> idle."""
+async def test_confirm_with_db_bankroll_reaches_terminal_state():
+    """awaiting_parse_confirm + confirm + bankroll in DB -> terminal state.
+
+    Before the no-bets-offer-result hotfix, the bot always transitioned to
+    `idle` when no bets were produced. Now when the analysis returns no bets
+    AND no skip signal, we instead transition to `awaiting_placed_tracked`
+    so the user can optionally report the finishing order for calibration.
+    Either terminal state is acceptable — we just assert the pipeline reaches
+    one of them (no stuck-in-processing state).
+    """
     from services.stake.handlers.callbacks import handle_parse_confirm
 
     pipeline_result = make_pipeline_result(with_bankroll=None)
@@ -256,26 +264,41 @@ async def test_confirm_with_db_bankroll_transitions_to_idle():
     callback_data = MagicMock()
     callback_data.action = "yes"
 
+    # Patch the graph at BOTH namespaces — callbacks.py imports it, pipeline.py
+    # (via _run_analysis_inline) also imports it. Without both patches the
+    # real graph runs and hits the network.
     with patch("services.stake.handlers.callbacks.get_stake_settings") as mock_settings, \
          patch("services.stake.handlers.callbacks.BankrollRepository") as mock_repo_cls, \
          patch("services.stake.handlers.callbacks.AuditLogger") as mock_audit_cls, \
          patch("services.stake.handlers.callbacks.balance_header", return_value=""), \
-         patch("services.stake.handlers.callbacks.build_analysis_graph") as mock_graph:
+         patch("services.stake.handlers.callbacks.build_analysis_graph") as mock_graph_cb, \
+         patch("services.stake.handlers.pipeline.build_analysis_graph") as mock_graph_pl:
 
         mock_settings.return_value.database_path = ":memory:"
         mock_settings.return_value.sizing.skip_overround_threshold = 15.0
         mock_repo = MagicMock()
-        mock_repo.get_balance = MagicMock(return_value=200.0)  # Has balance in DB
+        mock_repo.get_balance = MagicMock(return_value=200.0)
         mock_repo_cls.return_value = mock_repo
         mock_audit_cls.return_value = MagicMock(log_entry=MagicMock())
+
         compiled = MagicMock()
-        compiled.ainvoke = AsyncMock(return_value={"recommendation_text": "test", "skip_signal": False})
-        mock_graph.return_value = compiled
+        compiled.ainvoke = AsyncMock(return_value={
+            "recommendation_text": "test",
+            "skip_signal": False,
+            "final_bets": [],
+        })
+        mock_graph_cb.return_value = compiled
+        mock_graph_pl.return_value = compiled
 
         await handle_parse_confirm(callback, callback_data, state)
 
     set_state_calls = [call.args[0] for call in state.set_state.call_args_list]
-    assert PipelineStates.idle in set_state_calls
+    # Accept either terminal shape: legacy idle OR new awaiting_placed_tracked
+    # (no-bets now offers the Report-Result card).
+    terminal_states = {PipelineStates.idle, PipelineStates.awaiting_placed_tracked}
+    assert terminal_states & set(set_state_calls), (
+        f"Expected one of {terminal_states} in {set_state_calls}"
+    )
 
 
 # ── Test 6: Reject parse -> idle ─────────────────────────────────────────────

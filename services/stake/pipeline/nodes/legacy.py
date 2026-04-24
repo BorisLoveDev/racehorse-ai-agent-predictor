@@ -64,6 +64,70 @@ def _bankroll_repo_cls():
     )
 
 
+# Lightweight venue inference table — extended opportunistically.
+# Keys are substrings (case-insensitive, NFKC-normalized) seen in raw pastes
+# across any language; the first matching entry wins. Ordering matters when
+# one city is a substring of another — put specific entries first.
+_VENUE_HINTS: list[dict[str, str]] = [
+    # Turkey
+    {"match": "стамбул",   "track": "Istanbul (Veliefendi)", "region": "Turkey"},
+    {"match": "istanbul",  "track": "Istanbul (Veliefendi)", "region": "Turkey"},
+    {"match": "i̇stanbul", "track": "Istanbul (Veliefendi)", "region": "Turkey"},
+    {"match": "veliefendi","track": "Veliefendi (Istanbul)", "region": "Turkey"},
+    {"match": "измир",     "track": "Izmir",                 "region": "Turkey"},
+    {"match": "izmir",     "track": "Izmir",                 "region": "Turkey"},
+    {"match": "бурса",     "track": "Bursa",                 "region": "Turkey"},
+    {"match": "bursa",     "track": "Bursa",                 "region": "Turkey"},
+    {"match": "анкара",    "track": "Ankara",                "region": "Turkey"},
+    {"match": "ankara",    "track": "Ankara",                "region": "Turkey"},
+    # Russia
+    {"match": "москва",        "track": "Moscow Hippodrome", "region": "Russia"},
+    {"match": "moscow",        "track": "Moscow Hippodrome", "region": "Russia"},
+    {"match": "цми",           "track": "Moscow Hippodrome", "region": "Russia"},
+    # UK / IRE
+    {"match": "ascot",      "track": "Ascot",      "region": "UK"},
+    {"match": "cheltenham", "track": "Cheltenham", "region": "UK"},
+    {"match": "newmarket",  "track": "Newmarket",  "region": "UK"},
+    {"match": "curragh",    "track": "Curragh",    "region": "Ireland"},
+    # France
+    {"match": "chantilly", "track": "Chantilly", "region": "France"},
+    {"match": "longchamp", "track": "Longchamp", "region": "France"},
+    {"match": "auteuil",   "track": "Auteuil",   "region": "France"},
+    {"match": "deauville", "track": "Deauville", "region": "France"},
+    # Japan
+    {"match": "tokyo",     "track": "Tokyo",     "region": "Japan"},
+    {"match": "nakayama",  "track": "Nakayama",  "region": "Japan"},
+    {"match": "hanshin",   "track": "Hanshin",   "region": "Japan"},
+    # UAE
+    {"match": "meydan",    "track": "Meydan",    "region": "UAE"},
+    # Hong Kong
+    {"match": "happy valley", "track": "Happy Valley", "region": "Hong Kong"},
+    {"match": "sha tin",      "track": "Sha Tin",      "region": "Hong Kong"},
+    # Australia
+    {"match": "flemington", "track": "Flemington", "region": "Australia"},
+    {"match": "randwick",   "track": "Randwick",   "region": "Australia"},
+    {"match": "rosehill",   "track": "Rosehill",   "region": "Australia"},
+    {"match": "caulfield",  "track": "Caulfield",  "region": "Australia"},
+    {"match": "sandown",    "track": "Sandown",    "region": "Australia"},
+]
+
+
+def _infer_track_from_text(raw_text: str) -> dict[str, str] | None:
+    """Best-effort venue inference from raw paste text.
+
+    Called only when the LLM returned track=None. Uses a curated hint table
+    so multilingual pastes (Cyrillic, Turkish, etc.) don't trigger the
+    'what is the track?' clarification loop for well-known venues.
+    """
+    if not raw_text:
+        return None
+    haystack = raw_text.casefold()
+    for hint in _VENUE_HINTS:
+        if hint["match"] in haystack:
+            return {"track": hint["track"], "region": hint["region"]}
+    return None
+
+
 async def parse_node(state: PipelineState) -> dict[str, Any]:
     """Run LLM extraction on raw_input and detect ambiguous fields.
 
@@ -120,6 +184,17 @@ async def parse_node(state: PipelineState) -> dict[str, Any]:
         active_count = sum(1 for r in result.runners if r.status == "active")
         if active_count > 0 and missing_odds_count / active_count > 0.30:
             ambiguous.append("missing_odds")
+
+    # Fallback: scan raw_text for well-known venue/city hints the LLM may have
+    # missed (common on multilingual pastes — Cyrillic city names, Turkish
+    # accents, etc.). If we recognise a venue, fill it and skip the ambiguity
+    # prompt that would otherwise pester the user.
+    if result.track is None:
+        inferred = _infer_track_from_text(raw_text)
+        if inferred is not None:
+            result.track = inferred.get("track")
+            if inferred.get("region") and not result.region:
+                result.region = inferred.get("region")
 
     # Check for unknown track
     if result.track is None:
@@ -389,6 +464,26 @@ def _build_analysis_prompt(state: PipelineState, research_results: dict, no_vig_
             lines.append(f"Surface: {surface}")
         if place_terms:
             lines.append(f"Place terms: {place_terms}")
+
+        # Bet types available for THIS race — tells the LLM what exotic
+        # markets it may recommend. Normalised to lowercase for the contract.
+        bet_types = race_dict.get("bet_types_available") or (
+            parsed_race.bet_types_available
+            if hasattr(parsed_race, "bet_types_available") else None
+        )
+        if bet_types:
+            normalised: list[str] = []
+            for raw in bet_types:
+                if not isinstance(raw, str):
+                    continue
+                s = raw.strip().lower().replace(" ", "_")
+                if s and s not in normalised:
+                    normalised.append(s)
+            if normalised:
+                lines.append(
+                    "Bet types available on Stake.com for this race: "
+                    + ", ".join(normalised)
+                )
 
     if overround_active is not None:
         margin_pct = (overround_active - 1.0) * 100.0
