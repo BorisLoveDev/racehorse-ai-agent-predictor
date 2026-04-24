@@ -11,7 +11,13 @@ details}) the status transitions:
 Invariant I7: checkpointer persists graph state BEFORE interrupt() pauses,
 so a crash mid-race leaves the slip in 'draft' and the approval can be
 re-tried by resuming the thread_id.
+
+Re-execution note: LangGraph re-runs the whole node body on resume, so
+save_bet_slip is called a second time with the same idempotency_key. The
+UNIQUE constraint fires IntegrityError, which we swallow — the prior draft
+row is still there and the idempotency_key guarantees we do not double-book.
 """
+import sqlite3
 from typing import Optional
 
 from langgraph.types import interrupt
@@ -53,14 +59,24 @@ def make_interrupt_approval_node(*, bankroll_repo, mode: Mode):
 
         for slip_dict in slips:
             proposed = ProposedBetSlip.model_validate(slip_dict)
+            idem = make_idempotency_key(
+                user_id, race_id, proposed.intent.market, proposed.intent.selections,
+            )
             bet = BetSlip(
                 race_id=race_id, user_id=user_id, proposed=proposed,
-                idempotency_key=make_idempotency_key(
-                    user_id, race_id, proposed.intent.market, proposed.intent.selections,
-                ),
-                status="draft",
+                idempotency_key=idem, status="draft",
             )
-            bankroll_repo.save_bet_slip(bet.model_dump(mode="json"))
+            try:
+                bankroll_repo.save_bet_slip(bet.model_dump(mode="json"))
+            except sqlite3.IntegrityError:
+                # LangGraph re-runs the whole node on resume; fetch the
+                # previously persisted slip so downstream status updates
+                # hit the existing row, not a newly minted uuid.
+                lookup = getattr(bankroll_repo, "get_bet_slip_id_by_idempotency_key", None)
+                if lookup is not None:
+                    prior = lookup(idem)
+                    if prior:
+                        bet = bet.model_copy(update={"id": prior})
             bet_slip_ids.append(bet.id)
 
             payload = build_approval_payload(

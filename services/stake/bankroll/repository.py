@@ -312,6 +312,24 @@ class BankrollRepository:
         finally:
             conn.close()
 
+    def get_bet_slip_id_by_idempotency_key(self, idem: str) -> Optional[str]:
+        """Return the slip id for a given idempotency_key, or None.
+
+        Used by interrupt_approval on LangGraph resume: the node body re-runs
+        from the top, and we need to reuse the previously persisted slip id
+        rather than minting a new one (the UNIQUE constraint prevents a
+        second insert, and a fresh id would point at a non-existent row).
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT id FROM stake_bet_slips WHERE idempotency_key=?",
+                (idem,),
+            ).fetchone()
+        finally:
+            conn.close()
+        return row[0] if row else None
+
     def update_bet_slip_status(
         self, slip_id: str, status: str, *, user_edits: Optional[dict] = None,
     ) -> None:
