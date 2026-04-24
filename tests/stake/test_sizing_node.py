@@ -403,8 +403,9 @@ def test_format_recommendation_skip_message_format():
     assert "Overround 18% exceeds threshold" in result
 
 
-def test_format_recommendation_no_bets_message():
-    """format_recommendation shows no-bets message when final_bets is empty."""
+def test_format_recommendation_no_bets_minimal_state():
+    """When no analysis data is available, the no-bets card still explains
+    why no bet was placed instead of returning an empty refusal."""
     state = {
         "skip_signal": False,
         "final_bets": [],
@@ -413,8 +414,131 @@ def test_format_recommendation_no_bets_message():
 
     result = format_recommendation(state)
 
-    assert "No Bets" in result
-    assert "negative EV" in result
+    assert "No +EV bets" in result
+    assert "implied price" in result
+
+
+def test_format_recommendation_no_bets_renders_ai_ranking():
+    """When analysis_result has recommendations, the no-bets card shows the
+    top AI-ranked runners with probabilities + labels + reasoning — so the
+    user gets value from research/analysis spend even when no +EV exists."""
+    state = {
+        "skip_signal": False,
+        "final_bets": [],
+        "overround_active": 1.15,
+        "enriched_runners": [
+            {"number": 1, "win_odds": 4.0},
+            {"number": 3, "win_odds": 2.5},
+            {"number": 7, "win_odds": 9.0},
+        ],
+        "analysis_result": {
+            "recommendations": [
+                {
+                    "runner_name": "Swift Star",
+                    "runner_number": 3,
+                    "label": "highest_win_probability",
+                    "ai_win_prob": 0.38,
+                    "ai_place_prob": 0.72,
+                    "reasoning": "Strongest recent form and best draw.",
+                },
+                {
+                    "runner_name": "Dark Horse",
+                    "runner_number": 7,
+                    "label": "best_value",
+                    "ai_win_prob": 0.15,
+                    "ai_place_prob": 0.40,
+                    "reasoning": "Sharp trainer angle overlooked by market.",
+                },
+                {
+                    "runner_name": "Also Ran",
+                    "runner_number": 1,
+                    "label": "no_bet",
+                    "ai_win_prob": 0.05,
+                    "reasoning": "No evidence to support a play.",
+                },
+            ],
+            "overall_notes": "Track bias favours front runners today.",
+        },
+    }
+
+    result = format_recommendation(state)
+
+    assert "No +EV bets" in result
+    assert "15.0%" in result  # bookmaker margin
+    assert "Swift Star" in result and "(#3)" in result
+    assert "Dark Horse" in result and "(#7)" in result
+    # no_bet label excluded when at least one rankable runner exists
+    assert "Also Ran" not in result
+    # Price + implied + AI edge line present for the top ranked runner
+    assert "Price 2.50" in result
+    assert "implied 40.0%" in result
+    assert "AI edge -2.0pp" in result
+    # Overall race notes included
+    assert "Track bias favours front runners" in result
+
+
+def test_format_recommendation_no_bets_falls_back_when_all_labeled_no_bet():
+    """If every recommendation is labeled no_bet, still show them rather than
+    rendering an empty card."""
+    state = {
+        "skip_signal": False,
+        "final_bets": [],
+        "enriched_runners": [],
+        "analysis_result": {
+            "recommendations": [
+                {
+                    "runner_name": "A",
+                    "runner_number": 1,
+                    "label": "no_bet",
+                    "ai_win_prob": 0.2,
+                    "reasoning": "Skip reason A.",
+                },
+                {
+                    "runner_name": "B",
+                    "runner_number": 2,
+                    "label": "no_bet",
+                    "ai_win_prob": 0.1,
+                    "reasoning": "Skip reason B.",
+                },
+            ],
+        },
+    }
+
+    result = format_recommendation(state)
+
+    assert "No +EV bets" in result
+    assert "AI Ranking" in result
+    assert "A" in result and "B" in result
+
+
+def test_format_recommendation_no_bets_escapes_html():
+    """User-content fields in the no-bets card are HTML-escaped."""
+    state = {
+        "skip_signal": False,
+        "final_bets": [],
+        "enriched_runners": [],
+        "analysis_result": {
+            "recommendations": [
+                {
+                    "runner_name": "<script>",
+                    "runner_number": 1,
+                    "label": "highest_win_probability",
+                    "ai_win_prob": 0.3,
+                    "reasoning": "<bad>content</bad>",
+                },
+            ],
+            "overall_notes": "<note>",
+        },
+    }
+
+    result = format_recommendation(state)
+
+    assert "<script>" not in result
+    assert "&lt;script&gt;" in result
+    assert "<bad>" not in result
+    assert "&lt;bad&gt;" in result
+    assert "<note>" not in result
+    assert "&lt;note&gt;" in result
 
 
 def test_format_recommendation_market_discrepancy_notes_escaped():
