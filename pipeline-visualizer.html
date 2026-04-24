@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stake Bot — Pipeline Architecture</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #c9d1d9; overflow-x: hidden; }
+.header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 18px; color: #f0f6fc; }
+.header .tag { background: #238636; color: #fff; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.header .tag.orange { background: #d29922; }
+.header .tag.gray { background: #484f58; }
+.container { display: flex; height: calc(100vh - 56px); }
+.sidebar { width: 320px; min-width: 320px; background: #161b22; border-right: 1px solid #30363d; overflow-y: auto; padding: 16px; }
+.main { flex: 1; overflow-y: auto; padding: 24px; }
+.section { margin-bottom: 20px; }
+.section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8b949e; margin-bottom: 8px; font-weight: 600; }
+.stage-btn { display: block; width: 100%; text-align: left; background: #21262d; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; color: #c9d1d9; cursor: pointer; margin-bottom: 6px; font-size: 13px; transition: all 0.15s; }
+.stage-btn:hover { border-color: #58a6ff; background: #1c2128; }
+.stage-btn.active { border-color: #58a6ff; background: #0d419d33; }
+.stage-btn .num { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; background: #30363d; color: #8b949e; font-size: 11px; font-weight: 700; margin-right: 8px; }
+.stage-btn.active .num { background: #58a6ff; color: #0d1117; }
+.stage-btn .model-tag { float: right; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #30363d; color: #8b949e; }
+.stage-btn .model-tag.llm { background: #1f6feb33; color: #58a6ff; }
+.stage-btn .model-tag.math { background: #23863633; color: #3fb950; }
+.arrow { text-align: center; color: #484f58; font-size: 14px; margin: 2px 0; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
+.panel-header { background: #21262d; padding: 12px 16px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.panel-body { padding: 16px; font-size: 13px; line-height: 1.6; }
+.panel-body pre { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 12px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+.panel-body code { background: #30363d; padding: 2px 6px; border-radius: 3px; font-family: 'SF Mono', monospace; font-size: 12px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.badge-blue { background: #1f6feb33; color: #58a6ff; }
+.badge-green { background: #23863633; color: #3fb950; }
+.badge-yellow { background: #d2992233; color: #d29922; }
+.badge-red { background: #f8514933; color: #f85149; }
+.badge-purple { background: #8957e533; color: #bc8cff; }
+.flow-diagram { display: flex; flex-direction: column; gap: 0; align-items: center; margin: 16px 0; }
+.flow-node { background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 10px 20px; text-align: center; min-width: 200px; position: relative; }
+.flow-node.llm { border-color: #1f6feb; }
+.flow-node.math { border-color: #238636; }
+.flow-node.gate { border-color: #d29922; border-style: dashed; }
+.flow-node.storage { border-color: #8957e5; background: #8957e511; }
+.flow-node.future { border-color: #484f58; opacity: 0.5; }
+.flow-arrow { color: #484f58; font-size: 20px; line-height: 1; }
+.flow-branch { display: flex; gap: 24px; align-items: flex-start; }
+.flow-branch > div { text-align: center; }
+.data-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.data-table th, .data-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #21262d; font-size: 12px; }
+.data-table th { color: #8b949e; font-weight: 600; }
+.prompt-text { background: #0d1117; border-left: 3px solid #1f6feb; padding: 12px; margin: 8px 0; font-size: 12px; line-height: 1.5; color: #8b949e; }
+.tab-bar { display: flex; gap: 0; border-bottom: 1px solid #30363d; margin-bottom: 16px; }
+.tab { padding: 8px 16px; font-size: 13px; cursor: pointer; color: #8b949e; border-bottom: 2px solid transparent; }
+.tab:hover { color: #c9d1d9; }
+.tab.active { color: #f0f6fc; border-color: #58a6ff; }
+.hidden { display: none; }
+.cost-bar { display: flex; gap: 4px; align-items: center; margin: 4px 0; }
+.cost-segment { height: 8px; border-radius: 2px; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #8b949e; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+</head>
+<body>
+
+<div class="header">
+<h1>Stake Racing Advisor — Pipeline Architecture</h1>
+<span class="tag">Phase 1 ✓</span>
+<span class="tag">Phase 2 ✓</span>
+<span class="tag orange">Phase 3 planned</span>
+</div>
+
+<div class="container">
+<div class="sidebar">
+<div class="section">
+<div class="section-title">Phase 1 — Parse & Bankroll</div>
+<button class="stage-btn active" onclick="show('parse')">
+<span class="num">1</span>Parse
+<span class="model-tag llm">flash-lite</span>
+</button>
+<div class="arrow">↓</div>
+<button class="stage-btn" onclick="show('calc')">
+<span class="num">2</span>Calc
+<span class="model-tag math">Python</span>
+</button>
+</div>
+
+<div class="section">
+<div class="section-title">Phase 2 — Analysis & Sizing</div>
+<button class="stage-btn" onclick="show('skip')">
+<span class="num">3</span>Pre-Skip Check
+<span class="model-tag math">Python</span>
+</button>
+<div class="arrow">↓</div>
+<button class="stage-btn" onclick="show('research')">
+<span class="num">4</span>Research
+<span class="model-tag llm">pro + flash</span>
+</button>
+<div class="arrow">↓</div>
+<button class="stage-btn" onclick="show('analysis')">
+<span class="num">5</span>Analysis
+<span class="model-tag llm">pro</span>
+</button>
+<div class="arrow">↓</div>
+<button class="stage-btn" onclick="show('sizing')">
+<span class="num">6</span>Sizing
+<span class="model-tag math">Python</span>
+</button>
+<div class="arrow">↓</div>
+<button class="stage-btn" onclick="show('format')">
+<span class="num">7</span>Format
+<span class="model-tag math">Python</span>
+</button>
+</div>
+
+<div class="section">
+<div class="section-title">Phase 3 — Results & Reflection</div>
+<button class="stage-btn" onclick="show('results')" style="opacity:0.5">
+<span class="num">8</span>Result Eval
+<span class="model-tag gray">planned</span>
+</button>
+<div class="arrow">↓</div>
+<button class="stage-btn" onclick="show('reflect')" style="opacity:0.5">
+<span class="num">9</span>AI Reflection
+<span class="model-tag gray">planned</span>
+</button>
+<div class="arrow">↓ feeds back</div>
+<button class="stage-btn" onclick="show('feedback')" style="opacity:0.5">
+<span class="num">↻</span>Feedback Loop
+<span class="model-tag gray">planned</span>
+</button>
+</div>
+
+<div class="section">
+<div class="section-title">Views</div>
+<button class="stage-btn" onclick="show('overview')">
+<span class="num">⊞</span>Full Pipeline Flow
+</button>
+<button class="stage-btn" onclick="show('costs')">
+<span class="num">$</span>Cost Breakdown
+</button>
+<button class="stage-btn" onclick="show('storage')">
+<span class="num">⛁</span>Data Storage
+</button>
+</div>
+</div>
+
+<div class="main" id="content">
+<!-- Content rendered by JS -->
+</div>
+</div>
+
+<script>
+const stages = {
+parse: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-blue">LLM</span> Stage 1: Parse — Race Data Extraction</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Model</th><td><code>google/gemini-3.1-flash-lite-preview</code></td></tr>
+<tr><th>Temperature</th><td>0.0 (deterministic)</td></tr>
+<tr><th>Max tokens</th><td>4,000</td></tr>
+<tr><th>Cost</th><td>~$0.01–0.02 per parse</td></tr>
+</table>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">System Prompt (key directives)</div>
+<div class="panel-body">
+<div class="prompt-text">
+"You are a horse racing data extraction assistant..."<br><br>
+<b>Rules:</b><br>
+• If input is NOT race data → return empty runners array<br>
+• NULL means ABSENT — never guess or hallucinate values<br>
+• Convert all odds to decimal format<br>
+• Detect scratched runners → status="scratched"<br>
+• Extract bankroll only if explicitly labelled and >= $1.00<br>
+• Saddle cloth number from parentheses: "1. Horse (9)" → number=9
+</div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Input → Output</div>
+<div class="panel-body">
+<b>Input:</b> Raw Stake.com paste text (up to 5000 chars)<br><br>
+<b>Output:</b> <code>ParsedRace</code> Pydantic model<br>
+<pre>{
+  track: "Flemington",
+  race_number: "R5",
+  distance: "1200m",
+  surface: "Turf",
+  runners: [
+    { number: 11, name: "Pavlich", win_odds: 8.00,
+      win_odds_format: "decimal", jockey: "R. McLeod",
+      trainer: "M. Laurie", form_string: "31x30",
+      status: "active", tags: ["Top Tip"] },
+    ...
+  ],
+  detected_bankroll: 100.0,
+  overround_raw: null  // calculated in Stage 2
+}</pre>
+<br>
+<b>Validation guards:</b><br>
+• No runners → error: "No race data found"<br>
+• No runners with odds → error: "No runners with odds found"<br>
+• detected_bankroll < $1.00 → filtered to null
+</div>
+</div>
+`,
+
+calc: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-green">Python</span> Stage 2: Calc — Deterministic Odds Math</div>
+<div class="panel-body">
+<b>NO LLM</b> — Pure math functions (ARCH-01)
+<table class="data-table">
+<tr><th>Function</th><th>Formula</th><th>Example</th></tr>
+<tr><td><code>to_decimal()</code></td><td>Convert fractional/american → decimal</td><td>5/2 → 3.50</td></tr>
+<tr><td><code>implied_probability()</code></td><td>1 / decimal_odds</td><td>1/3.50 = 28.6%</td></tr>
+<tr><td><code>overround()</code></td><td>Σ(implied_prob)</td><td>1.20 = 20% margin</td></tr>
+<tr><td><code>odds_drift_pct()</code></td><td>(current - opening) / opening × 100</td><td>+15.0%</td></tr>
+</table>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Output: Enriched Runners</div>
+<div class="panel-body">
+<pre>{
+  enriched_runners: [
+    { number: 11, name: "Pavlich",
+      decimal_odds: 8.00,
+      implied_prob: 0.125,    // 12.5%
+      odds_drift: +15.0,     // drifted 15%
+      status: "active",
+      jockey: "R. McLeod", trainer: "M. Laurie",
+      form_string: "31x30" },
+    ...
+  ],
+  overround_raw: 1.20,       // all runners
+  overround_active: 1.18     // excluding scratched
+}</pre>
+</div>
+</div>
+`,
+
+skip: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-yellow">Gate</span> Stage 3: Pre-Skip Check — Tier 1 Margin Gate</div>
+<div class="panel-body">
+<b>NO LLM</b> — Threshold comparison<br><br>
+<code>margin = (overround_active - 1.0) × 100</code><br>
+<code>threshold = 15.0%</code> (configurable via <code>STAKE_SIZING__SKIP_OVERROUND_THRESHOLD</code>)<br><br>
+
+<b>If margin > threshold:</b><br>
+→ User sees: "High margin: 20.7%. Continue Anyway / Skip Race"<br>
+→ If Skip → pipeline stops, no API costs<br>
+→ If Continue → <code>skip_signal = False</code>, bypasses this check<br><br>
+
+<b>If margin ≤ threshold:</b><br>
+→ Pipeline continues to Research<br><br>
+
+<b>Purpose:</b> Save ~$0.35 in API costs on races where margin makes +EV bets impossible.
+</div>
+</div>
+`,
+
+research: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-blue">LLM</span> Stage 4: Research — Two-Tier Agent Pattern (D-02)</div>
+<div class="panel-body">
+The most expensive stage. Senior orchestrator plans, cheap sub-agents execute.
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Phase 1: Planning (Senior Orchestrator)</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Model</th><td><code>google/gemini-3.1-pro-preview</code> <span class="badge badge-yellow">expensive</span></td></tr>
+<tr><th>Temperature</th><td>0.7</td></tr>
+<tr><th>Role</th><td>Creates research plan — decides WHAT to search</td></tr>
+</table>
+<div class="prompt-text">
+"You are a senior horse racing research strategist..."<br>
+• FULL AUTONOMY over research strategy<br>
+• Available data: form, trainer stats, jockey stats, track conditions, expert tips, market movements<br>
+• Output: 3–8 search queries (max 15)<br>
+• Each query = {query: "search string", purpose: "why"}
+</div>
+<b>Output:</b> <code>ResearchPlan</code>
+<pre>{ queries: [
+    { query: "Pavlich horse form Caulfield Guineas 2026", purpose: "class drop assessment" },
+    { query: "Bendigo R5 tips expert selections", purpose: "expert consensus" },
+    ...  // 3-8 queries
+] }</pre>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Phase 2: Execution (Cheap Sub-Agents)</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Model</th><td><code>google/gemini-3.1-flash-lite-preview</code> <span class="badge badge-green">cheap</span></td></tr>
+<tr><th>Temperature</th><td>0.3</td></tr>
+<tr><th>Provider</th><td><code>online</code> (web grounding) or <code>searxng</code></td></tr>
+<tr><th>Per query</th><td>~$0.02, 2-5 seconds</td></tr>
+</table>
+<div class="prompt-text">
+"You are a fast search agent. Execute the given search query and return a concise summary of relevant horse racing information found. Be concise — facts only."
+</div>
+<b>Loop:</b> For each query in ResearchPlan → invoke sub-agent → collect result text
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Phase 3: Synthesis (Senior Orchestrator)</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Model</th><td><code>google/gemini-3.1-pro-preview</code> <span class="badge badge-yellow">expensive</span></td></tr>
+<tr><th>Input</th><td>Race context + all search results</td></tr>
+</table>
+<b>Output:</b> <code>ResearchOutput</code>
+<pre>{ runners: [
+    { runner_name: "Pavlich",
+      data_quality: "rich",
+      form_summary: "Class drop from Caulfield Guineas...",
+      trainer_stats: "M. Laurie: 28% strike rate...",
+      expert_opinion: "Tipped by multiple experts...",
+      external_odds: "7.50 at TAB",
+      confidence_notes: "High confidence — consistent data" },
+    ...
+  ],
+  overall_notes: "Competitive handicap, track playing fair..."
+}</pre>
+</div>
+</div>
+`,
+
+analysis: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-blue">LLM</span> Stage 5: Analysis — Probability & Label Assignment</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Model</th><td><code>google/gemini-3.1-pro-preview</code> <span class="badge badge-yellow">expensive</span></td></tr>
+<tr><th>Temperature</th><td>0.7</td></tr>
+<tr><th>Max tokens</th><td>8,000</td></tr>
+<tr><th>Structured output</th><td><code>AnalysisResult</code> Pydantic model</td></tr>
+</table>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Prompt Architecture</div>
+<div class="panel-body">
+<b>LLM receives pre-computed math (ARCH-01 — never generates numbers):</b>
+<pre>Per runner:
+  #11 Pavlich
+  Decimal odds: 8.00
+  No-vig prob: 14.2%     ← Python calculated
+  Market EV at no-vig: +0.136
+  Odds drift: +15.0%
+  Form: 31x30
+  J: R. McLeod | T: M. Laurie
+
+  Research quality: rich
+  Form: Class drop from Caulfield Guineas...
+  Trainer: M. Laurie 28% strike rate
+  Expert: Tipped by multiple experts
+  External odds: 7.50 at TAB</pre>
+
+<div class="prompt-text">
+<b>Key directives:</b><br>
+• Assign <code>ai_win_prob</code> (0.0–1.0) for EVERY runner<br>
+• Assign <code>ai_place_prob</code> (0.0–1.0) for EVERY runner<br>
+• Label ≥3 runners non-"no_bet" (portfolio coverage)<br>
+• Labels: highest_win_probability | best_value | best_place_candidate | no_bet<br>
+• Never generate USDT amounts — Python does sizing<br>
+• Set overall_skip ONLY for genuinely unanalyzable races<br>
+• High margin alone is NOT a reason to skip
+</div>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Output: AnalysisResult</div>
+<div class="panel-body">
+<pre>{
+  recommendations: [
+    { runner_name: "Pavlich", runner_number: 11,
+      label: "best_value",
+      ai_win_prob: 0.18,      ← LLM assessment
+      ai_place_prob: 0.35,    ← LLM assessment
+      reasoning: "Class drop from Caulfield Guineas..." },
+    { runner_name: "Caleana", runner_number: 3,
+      label: "highest_win_probability",
+      ai_win_prob: 0.30,
+      ai_place_prob: 0.55,
+      reasoning: "Progressive form..." },
+    ...
+  ],
+  overall_skip: false,
+  ai_override: false,
+  market_discrepancy_notes: ["Pavlich 8.00 vs 7.50 at TAB"]
+}</pre>
+</div>
+</div>
+`,
+
+sizing: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-green">Python</span> Stage 6: Sizing — Kelly Criterion + Portfolio Caps</div>
+<div class="panel-body">
+<b>NO LLM</b> — Pure deterministic math (ARCH-01)<br><br>
+<b>Inputs:</b> ai_win_prob + ai_place_prob (from LLM) + decimal_odds + bankroll<br>
+<b>Outputs:</b> Exact USDT amounts per bet
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Formulas</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Step</th><th>Formula</th><th>Example (Pavlich 8.00, ai_prob 0.18)</th></tr>
+<tr><td>EV</td><td><code>(ai_prob × odds) - 1</code></td><td>(0.18 × 8.0) - 1 = <b>+0.44</b></td></tr>
+<tr><td>Kelly %</td><td><code>(ai_prob × odds - 1) / (odds - 1)</code></td><td>(0.18×8-1)/(8-1) = <b>6.3%</b></td></tr>
+<tr><td>Half-Kelly</td><td><code>Kelly × 0.5</code></td><td>6.3% × 0.5 = <b>3.15%</b></td></tr>
+<tr><td>USDT</td><td><code>bankroll × half_kelly</code></td><td>100 × 0.0315 = <b>3.15 USDT</b></td></tr>
+<tr><td>Cap check</td><td><code>min(amount, bankroll × 5%)</code></td><td>min(3.15, 5.0) = <b>3.15</b></td></tr>
+<tr><td>Sparsity</td><td><code>amount × 0.5 if sparse</code></td><td>Not sparse → <b>3.15</b></td></tr>
+</table>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Portfolio Constraints</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Parameter</th><th>Default</th><th>Env var</th></tr>
+<tr><td>Kelly multiplier</td><td>0.5 (half-Kelly)</td><td><code>STAKE_SIZING__KELLY_MULTIPLIER</code></td></tr>
+<tr><td>Per-bet cap</td><td>5% of bankroll</td><td><code>STAKE_SIZING__PER_BET_CAP_PCT</code></td></tr>
+<tr><td>Total exposure</td><td>10% of bankroll</td><td><code>STAKE_SIZING__MAX_TOTAL_EXPOSURE_PCT</code></td></tr>
+<tr><td>Max win bets</td><td>3 per race</td><td><code>STAKE_SIZING__MAX_WIN_BETS</code></td></tr>
+<tr><td>Min bet</td><td>1.0 USDT</td><td><code>STAKE_SIZING__MIN_BET_USDT</code></td></tr>
+<tr><td>Sparsity discount</td><td>0.5× if data sparse</td><td><code>STAKE_SIZING__SPARSITY_DISCOUNT</code></td></tr>
+</table>
+<br>
+<b>Place bets:</b> Generated for ALL non-"no_bet" runners when place_odds available.<br>
+Place probability from LLM (ai_place_prob ≥ ai_win_prob).
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Output: BetRecommendation[]</div>
+<div class="panel-body">
+<pre>[
+  { runner_name: "Pavlich", runner_number: 11,
+    label: "best_value", bet_type: "win",
+    ev: +0.44, kelly_pct: 6.3,
+    usdt_amount: 3.15, data_sparse: false,
+    reasoning: "Class drop from Caulfield Guineas..." },
+  { runner_name: "Pavlich", runner_number: 11,
+    label: "best_value", bet_type: "place",
+    ev: +0.22, kelly_pct: 4.1,
+    usdt_amount: 2.05, data_sparse: false,
+    reasoning: "..." },
+  ...
+]</pre>
+</div>
+</div>
+`,
+
+format: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-green">Python</span> Stage 7: Format — Telegram HTML Cards</div>
+<div class="panel-body">
+<b>NO LLM</b> — String formatting with HTML escaping<br><br>
+All variable strings escaped with <code>html.escape()</code> to prevent Telegram parse_mode=HTML failures.
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header">Output Examples</div>
+<div class="panel-body">
+<b>Bet recommendation:</b>
+<pre>&lt;b&gt;Bet Recommendations&lt;/b&gt;
+
+&lt;b&gt;Pavlich (#11)&lt;/b&gt;
+Label: Best Value
+Bet: win — &lt;b&gt;3.15 USDT&lt;/b&gt;
+EV: +0.44 | Kelly: 6.3%
+Class drop from Caulfield Guineas...
+
+&lt;b&gt;Total: 5.20 USDT (5.2% of bankroll)&lt;/b&gt;</pre>
+<br>
+<b>Skip message (Tier 1):</b>
+<pre>&lt;b&gt;SKIP&lt;/b&gt; — Bookmaker margin 20.3% exceeds threshold 15.0%
+Tier 1 skip signal.</pre>
+<br>
+<b>Error message:</b>
+<pre>&lt;b&gt;Analysis Error&lt;/b&gt;
+Research failed: 'dict' object has no attribute 'track'</pre>
+</div>
+</div>
+`,
+
+results: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-yellow">Phase 3</span> Stage 8: Result Evaluation — NOT YET IMPLEMENTED</div>
+<div class="panel-body">
+<b>Planned flow:</b><br><br>
+1. User submits race result as text ("3,5,11,12" or "Pavlich won")<br>
+2. Bot parses result → matches against recommended bets<br>
+3. User marks each bet as <code>placed</code> (real money) or <code>tracked</code> (paper)<br>
+4. P&L calculated for placed bets only<br>
+5. Model quality metrics count both placed + tracked<br><br>
+
+<b>Example:</b>
+<pre>Result: Pavlich (#11) WON at 8.00
+
+Recommended: win 3.15 USDT
+Status: placed
+P&L: +3.15 × (8.00 - 1) = +22.05 USDT
+ROI: +700%</pre>
+</div>
+</div>
+`,
+
+reflect: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-yellow">Phase 3</span> Stage 9: AI Reflection — NOT YET IMPLEMENTED</div>
+<div class="panel-body">
+<b>After each result:</b><br><br>
+1. AI writes reflection entry to <code>mindset.md</code><br>
+2. Must include what went wrong even in winning bets<br>
+3. Extracts one structured lesson:<br>
+<pre>{ error_tag: "class_drop_undervalued",
+  rule: "When a horse drops 3+ class levels, increase ai_win_prob by 5-10%",
+  source_race: "Bendigo R5 2026-03-27" }</pre>
+4. Lesson appended to lessons store<br><br>
+
+<b>Storage:</b><br>
+• <code>mindset.md</code> — raw AI reflections (rolling, last 20)<br>
+• <code>lessons.jsonl</code> — structured lessons (error_tag + rule + source)
+</div>
+</div>
+`,
+
+feedback: `
+<div class="panel">
+<div class="panel-header"><span class="badge badge-yellow">Phase 3</span> Feedback Loop — NOT YET IMPLEMENTED</div>
+<div class="panel-body">
+<b>How reflections feed back into the next race's analysis:</b><br><br>
+
+The Analysis prompt (Stage 5) will receive:
+<pre>=== YOUR LEARNED LESSONS ===
+Top 5 rules (most recent first):
+
+1. [class_drop_undervalued] When a horse drops 3+ class
+   levels, increase ai_win_prob by 5-10%
+2. [maiden_winner_overbet] First-time winners often
+   regress — apply caution label
+3. [wet_track_bias] On Soft 7+, reduce win prob for
+   horses with no wet form
+4. ...
+
+Last 3 failure modes:
+- Overrated favourite in low-quality field (lost 2.5 USDT)
+- Missed value on class dropper (tracked, would have won)
+- Place bet on front-runner in big field (ran wide)</pre>
+
+<b>Key design:</b> Only structured lessons reach the prompt, NOT raw reflection text. This prevents context bloat and keeps advice actionable.
+<br><br>
+<b>Drawdown circuit breaker:</b><br>
+If bankroll drops ≥20% from peak → all recommendations become "SKIP (drawdown protection)" until user explicitly unlocks.
+</div>
+</div>
+`,
+
+overview: `
+<div class="panel">
+<div class="panel-header">Complete Pipeline Flow</div>
+<div class="panel-body">
+<div class="flow-diagram">
+
+<div class="flow-node">📱 <b>User</b> pastes Stake.com race text</div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node llm"><b>1. Parse</b><br><small>flash-lite | T=0.0 | ~$0.02</small><br><small>→ ParsedRace + RunnerInfo[]</small></div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node math"><b>2. Calc</b><br><small>Python | to_decimal, implied_prob, overround</small><br><small>→ enriched_runners + overround</small></div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node gate"><b>3. Skip Check</b><br><small>margin > 15%? → ask user</small></div>
+<div class="flow-arrow">↓ continue</div>
+
+<div class="flow-node llm" style="border-width:2px"><b>4. Research</b> (3 phases)<br>
+<small>① Pro plans queries (~$0.05)</small><br>
+<small>② Flash-lite executes 3-8 searches (~$0.20)</small><br>
+<small>③ Pro synthesizes results (~$0.05)</small><br>
+<small>→ ResearchOutput per runner</small></div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node llm"><b>5. Analysis</b><br><small>Pro | T=0.7 | ~$0.05</small><br><small>→ ai_win_prob + ai_place_prob + labels</small></div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node math"><b>6. Sizing</b><br><small>Python | EV → Kelly → half-Kelly → caps</small><br><small>→ BetRecommendation[] with USDT</small></div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node math"><b>7. Format</b><br><small>Python | HTML cards for Telegram</small><br><small>→ recommendation_text</small></div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node">📱 <b>User</b> sees bet recommendations</div>
+
+<div class="flow-arrow" style="margin-top:24px; color: #d29922;">── Phase 3 (planned) ──</div>
+
+<div class="flow-node future"><b>8. Result Eval</b><br><small>User submits result → P&L calc</small></div>
+<div class="flow-arrow">↓</div>
+
+<div class="flow-node future"><b>9. AI Reflection</b><br><small>Pro | mindset.md + lessons.jsonl</small></div>
+<div class="flow-arrow">↓ top-5 rules + last-3 failures</div>
+
+<div class="flow-node future" style="border-color: #d29922;"><b>↻ Feeds into Stage 5 prompt</b><br><small>Next race gets learned lessons</small></div>
+
+</div>
+</div>
+</div>
+`,
+
+costs: `
+<div class="panel">
+<div class="panel-header">Cost Breakdown per Race Analysis (~$0.35-0.40)</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Stage</th><th>Model</th><th>Calls</th><th>Est. Cost</th></tr>
+<tr><td>1. Parse</td><td>flash-lite</td><td>1</td><td>$0.01-0.02</td></tr>
+<tr><td>4a. Research plan</td><td>Pro</td><td>1</td><td>$0.04-0.06</td></tr>
+<tr><td>4b. Search queries</td><td>flash-lite</td><td>3-8</td><td>$0.10-0.20</td></tr>
+<tr><td>4c. Synthesis</td><td>Pro</td><td>1</td><td>$0.04-0.06</td></tr>
+<tr><td>5. Analysis</td><td>Pro</td><td>1</td><td>$0.04-0.06</td></tr>
+<tr style="font-weight:bold"><td colspan=3>Total</td><td>$0.25-0.40</td></tr>
+</table>
+<br>
+<div class="cost-bar">
+<div class="cost-segment" style="width:5%;background:#3fb950" title="Parse"></div>
+<div class="cost-segment" style="width:15%;background:#1f6feb" title="Research plan"></div>
+<div class="cost-segment" style="width:50%;background:#58a6ff" title="Search queries"></div>
+<div class="cost-segment" style="width:15%;background:#1f6feb" title="Synthesis"></div>
+<div class="cost-segment" style="width:15%;background:#1f6feb" title="Analysis"></div>
+</div>
+<div class="legend">
+<div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div> Parse (flash-lite)</div>
+<div class="legend-item"><div class="legend-dot" style="background:#1f6feb"></div> Pro calls</div>
+<div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Flash-lite searches</div>
+</div>
+<br>
+<b>Optimization ideas:</b><br>
+• Limit research queries to 3-5 (currently up to 15)<br>
+• Use flash-lite for analysis on low-stakes races<br>
+• Cache research results for same-track races within 1 hour<br>
+• Skip research entirely for heavily-tipped favourites
+</div>
+</div>
+`,
+
+storage: `
+<div class="panel">
+<div class="panel-header">Data Storage Architecture</div>
+<div class="panel-body">
+<table class="data-table">
+<tr><th>Store</th><th>Type</th><th>What</th><th>TTL</th></tr>
+<tr><td><span class="badge badge-red">Redis</span></td><td>FSM State</td><td>Full PipelineState per user session</td><td>24h</td></tr>
+<tr><td><span class="badge badge-purple">SQLite</span></td><td>races.db</td><td>Bankroll balance (singleton row)</td><td>Permanent</td></tr>
+<tr><td><span class="badge badge-blue">JSONL</span></td><td>stake_audit.jsonl</td><td>Every pipeline event (append-only)</td><td>Permanent</td></tr>
+</table>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><span class="badge badge-red">Redis</span> FSM State Fields</div>
+<div class="panel-body">
+<pre>Phase 1:
+  raw_input            — original paste text
+  parsed_race          — ParsedRace as dict
+  detected_bankroll    — float or null
+  enriched_runners     — list of enriched runner dicts
+  overround_raw        — all runners
+  overround_active     — active runners only
+  ambiguous_fields     — ["runner_count_mismatch", ...]
+  error                — error message if failed
+
+Phase 2:
+  skip_signal          — true/false/null
+  skip_reason          — "Margin 20% exceeds..."
+  skip_tier            — 1 (pre-analysis) or 2 (post-analysis)
+  research_results     — ResearchOutput as dict
+  research_error       — error string
+  analysis_result      — AnalysisResult as dict
+  final_bets           — list of BetRecommendation dicts
+  recommendation_text  — HTML string for Telegram</pre>
+</div>
+</div>
+
+<div class="panel">
+<div class="panel-header"><span class="badge badge-blue">JSONL</span> Audit Events</div>
+<div class="panel-body">
+<pre>pipeline_start         — {raw_input: "...first 500 chars..."}
+parse_complete         — {parsed_race: {...}, overround_raw: 1.20}
+user_confirmed         — {}
+bankroll_set           — {balance: 100.0, source: "manual_input"}
+user_skipped_high_margin — {}
+user_forced_continue   — {}
+recommendation         — {final_bets: [...], skip_signal: false}
+analysis_error         — {error: "Research failed: ..."}</pre>
+</div>
+</div>
+`
+};
+
+function show(stage) {
+  document.getElementById('content').innerHTML = stages[stage] || '<div class="panel"><div class="panel-body">Coming soon...</div></div>';
+  document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('active'));
+  event.target.closest('.stage-btn')?.classList.add('active');
+}
+
+// Show overview by default
+document.getElementById('content').innerHTML = stages.overview;
+</script>
+
+</body>
+</html>
