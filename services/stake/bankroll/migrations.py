@@ -91,6 +91,22 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
         if "drawdown_unlocked" not in cols:
             cursor.execute("ALTER TABLE stake_bankroll ADD COLUMN drawdown_unlocked INTEGER DEFAULT 0")
 
+        # Hotfix: message_id + chat_id + user_id on stake_pipeline_runs so
+        # reply-to-message routing can map a Telegram reply to the original
+        # recommendation run. Idempotent PRAGMA+ALTER pattern.
+        cursor.execute("PRAGMA table_info(stake_pipeline_runs)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if "message_id" not in cols:
+            cursor.execute("ALTER TABLE stake_pipeline_runs ADD COLUMN message_id INTEGER")
+        if "chat_id" not in cols:
+            cursor.execute("ALTER TABLE stake_pipeline_runs ADD COLUMN chat_id INTEGER")
+        if "user_id" not in cols:
+            cursor.execute("ALTER TABLE stake_pipeline_runs ADD COLUMN user_id INTEGER")
+        if "result_positions" not in cols:
+            cursor.execute("ALTER TABLE stake_pipeline_runs ADD COLUMN result_positions TEXT")
+        if "result_reported_at" not in cols:
+            cursor.execute("ALTER TABLE stake_pipeline_runs ADD COLUMN result_reported_at TEXT")
+
         # ------------------------------------------------------------------
         # Phase 1 new tables
         # ------------------------------------------------------------------
