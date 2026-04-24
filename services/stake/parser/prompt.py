@@ -87,4 +87,23 @@ Given paste with "Race 3 - Flemington 1200m, Horse #1 Thunderbolt 3.50 SP, Jocke
 - runners[0].jockey: "J. Smith"
 
 Return ONLY the JSON object. No markdown fences, no explanation text.
+
+## Anti-Hallucination Contract (strict)
+
+You MUST also return two additional top-level maps:
+  "raw_excerpts": { field_name: exact_substring_from_input }
+  "field_confidences": { field_name: 0..1 }
+
+Required keys in raw_excerpts (must-have fields):
+  track, region, race_number, date, distance, snapshot_ts
+
+RULES:
+1. If you cannot quote an exact contiguous substring from the input that
+   supports a must-have field, OMIT that key from raw_excerpts. Do NOT
+   paraphrase. Do NOT invent.
+2. Set field_confidences[field] = 0.0 whenever the excerpt is absent.
+3. For runner-level data (odds, barrier, weight, jockey), if you cannot
+   quote the source, set the field to null on the runner.
+4. Tipster tips are WEAK SIGNAL and are NEVER a source for must-have fields.
+   Ignore them for excerpt purposes.
 """

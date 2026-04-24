@@ -206,3 +206,200 @@ class BankrollRepository:
         recovery_threshold = peak * (1 - threshold_pct / 100.0)
         if balance >= recovery_threshold:
             self.set_drawdown_unlocked(False)
+
+    # ---------- Phase 1 additions ----------
+    def current_balance(self) -> float:
+        """Phase-1-aligned alias: returns 0.0 when not set (safer for downstream arithmetic)."""
+        v = self.get_balance()
+        return 0.0 if v is None else float(v)
+
+    def peak_balance(self) -> float:
+        v = self.get_peak_balance()
+        return 0.0 if v is None else float(v)
+
+    def staked_today(self) -> float:
+        """Sum of confirmed bet_slips stakes for today (UTC).
+
+        Used by Sizer to enforce daily-limit cap. Day boundary is UTC midnight
+        to avoid timezone drift across server restarts.
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(stake), 0.0) FROM stake_bet_slips "
+                "WHERE status='confirmed' "
+                "AND date(confirmed_at) = date('now')"
+            ).fetchone()
+            return float(row[0] or 0.0)
+        finally:
+            conn.close()
+
+    def save_bet_slip(self, slip: dict) -> None:
+        """Persist a Phase-1 BetSlip.model_dump() into stake_bet_slips.
+
+        Raises sqlite3.IntegrityError on duplicate idempotency_key (invariant
+        I7 defense — idempotency_key prevents double-submission).
+
+        If the slip is inserted with status='confirmed' but no confirmed_at
+        timestamp (e.g. reconstructed from a stored record or created confirmed
+        in a single step), confirmed_at is backfilled to datetime('now') so
+        that staked_today() can attribute it to the current UTC day.
+        """
+        import json
+        proposed = slip["proposed"]
+        sizing = proposed["sizing_params"]
+        intent = proposed["intent"]
+        status = slip.get("status", "draft")
+        confirmed_at = slip.get("confirmed_at")
+        conn = sqlite3.connect(self.db_path)
+        try:
+            if status == "confirmed" and not confirmed_at:
+                conn.execute(
+                    """
+                    INSERT INTO stake_bet_slips
+                        (id, race_id, user_id, market, selections, stake, confidence,
+                         idempotency_key, status, mode,
+                         max_loss, profit_if_win, portfolio_var_95,
+                         caps_applied, sizing_params, user_edits, confirmed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    """,
+                    (
+                        slip["id"], slip["race_id"], slip["user_id"],
+                        intent["market"],
+                        json.dumps(intent["selections"]),
+                        float(proposed["stake"]),
+                        float(intent.get("confidence", 0.0)),
+                        slip.get("idempotency_key"),
+                        status,
+                        proposed.get("mode", "paper"),
+                        float(proposed.get("max_loss", 0.0)),
+                        float(proposed.get("profit_if_win", 0.0)),
+                        float(proposed.get("portfolio_var_95", 0.0)),
+                        json.dumps(proposed.get("caps_applied") or []),
+                        json.dumps(sizing),
+                        json.dumps(slip.get("user_edits")) if slip.get("user_edits") else None,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO stake_bet_slips
+                        (id, race_id, user_id, market, selections, stake, confidence,
+                         idempotency_key, status, mode,
+                         max_loss, profit_if_win, portfolio_var_95,
+                         caps_applied, sizing_params, user_edits, confirmed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        slip["id"], slip["race_id"], slip["user_id"],
+                        intent["market"],
+                        json.dumps(intent["selections"]),
+                        float(proposed["stake"]),
+                        float(intent.get("confidence", 0.0)),
+                        slip.get("idempotency_key"),
+                        status,
+                        proposed.get("mode", "paper"),
+                        float(proposed.get("max_loss", 0.0)),
+                        float(proposed.get("profit_if_win", 0.0)),
+                        float(proposed.get("portfolio_var_95", 0.0)),
+                        json.dumps(proposed.get("caps_applied") or []),
+                        json.dumps(sizing),
+                        json.dumps(slip.get("user_edits")) if slip.get("user_edits") else None,
+                        confirmed_at,
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_bet_slip_id_by_idempotency_key(self, idem: str) -> Optional[str]:
+        """Return the slip id for a given idempotency_key, or None.
+
+        Used by interrupt_approval on LangGraph resume: the node body re-runs
+        from the top, and we need to reuse the previously persisted slip id
+        rather than minting a new one (the UNIQUE constraint prevents a
+        second insert, and a fresh id would point at a non-existent row).
+        """
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT id FROM stake_bet_slips WHERE idempotency_key=?",
+                (idem,),
+            ).fetchone()
+        finally:
+            conn.close()
+        return row[0] if row else None
+
+    def update_bet_slip_status(
+        self, slip_id: str, status: str, *, user_edits: Optional[dict] = None,
+    ) -> None:
+        import json
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute(
+                "UPDATE stake_bet_slips SET status=?, user_edits=?, "
+                "confirmed_at=datetime('now') WHERE id=?",
+                (status, json.dumps(user_edits) if user_edits is not None else None, slip_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_bet_slip(self, slip_id: str) -> Optional[dict]:
+        """Return a BetSlip-shaped dict (with nested proposed) or None."""
+        import json
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                """
+                SELECT id, race_id, user_id, market, selections, stake, confidence,
+                       idempotency_key, status, mode,
+                       max_loss, profit_if_win, portfolio_var_95,
+                       caps_applied, sizing_params, user_edits, confirmed_at
+                FROM stake_bet_slips WHERE id=?
+                """,
+                (slip_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        (sid, race_id, user_id, market, sel_json, stake, confidence,
+         idem, status, mode, max_loss, profit_if_win, var95,
+         caps_json, sizing_json, user_edits_json, confirmed_at) = row
+        return {
+            "id": sid, "race_id": race_id, "user_id": user_id,
+            "idempotency_key": idem, "status": status,
+            "stake": float(stake), "mode": mode,
+            "proposed": {
+                "intent": {
+                    "market": market,
+                    "selections": json.loads(sel_json) if sel_json else [],
+                    "confidence": float(confidence or 0.0),
+                    "rationale_id": "",
+                    "edge_source": "paper_only",
+                },
+                "stake": float(stake),
+                "max_loss": float(max_loss or 0.0),
+                "profit_if_win": float(profit_if_win or 0.0),
+                "portfolio_var_95": float(var95 or 0.0),
+                "caps_applied": json.loads(caps_json) if caps_json else [],
+                "sizing_params": json.loads(sizing_json) if sizing_json else {},
+                "mode": mode,
+            },
+            "user_edits": json.loads(user_edits_json) if user_edits_json else None,
+            "confirmed_at": confirmed_at,
+        }
+
+    def apply_paper_pnl(self, *, race_id: str, pnl: float) -> None:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute(
+                "UPDATE stake_bankroll "
+                "SET balance_usdt = balance_usdt + ?, updated_at = datetime('now') "
+                "WHERE id = 1",
+                (float(pnl),),
+            )
+            conn.commit()
+        finally:
+            conn.close()

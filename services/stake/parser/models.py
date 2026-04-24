@@ -66,3 +66,14 @@ class ParsedRace(BaseModel):
     runners: List[RunnerInfo] = Field(default_factory=list)
     market_context: Optional[MarketContext] = None
     detected_bankroll: Optional[float] = None
+
+    # Anti-hallucination contract (invariant I3).
+    # raw_excerpts: per must-have field, a non-empty substring quoted from the
+    # input. Absent or empty excerpt => field is treated as missing and the
+    # validator adds it to missing_fields, routing the race to interrupt_gate.
+    raw_excerpts: dict[str, str] = Field(default_factory=dict)
+    field_confidences: dict[str, float] = Field(default_factory=dict)
+    missing_fields: List[str] = Field(default_factory=list)
+    parser_model: Optional[str] = None
+    snapshot_ts: Optional[str] = None
+    source_type: Optional[str] = None  # "text" | "screenshot" | "photo" | "voice"

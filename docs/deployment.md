@@ -64,3 +64,32 @@ Base env vars (TELEGRAM_BOT_TOKEN) are empty in Coolify. Update via:
 ```bash
 ssh meridian "docker logs $(docker ps --format '{{.Names}}' | grep stake)"
 ```
+
+## Phase 1 paper-only — runtime notes
+
+- Mount `config/config.yaml` at `/app/config/config.yaml` in the container.
+  Copy `config/config.example.yaml` locally and edit.
+- `mode: live` in the config is rejected by invariant I1 at startup; the
+  container exits non-zero. Phase 1 accepts `paper` (default) or `dry_run`.
+- Env vars (Coolify UI):
+  - `STAKE_DATABASE_PATH` — SQLite path for bankroll/slips/samples/traces
+    (default `races.db`).
+  - `STAKE_CHECKPOINTER_PATH` — AsyncSqliteSaver path for LangGraph state
+    (default `data/checkpoints.db`).
+  - `STAKE_MODE` — optional env fallback when no `config.yaml` is present.
+- The legacy `services/stake/main.main()` entry point still uses the
+  pre-Phase-1 graph. `build_runtime()` is the Phase-1 assembly point;
+  switching the entry to use it is a separate integration step (owned by
+  Phase 2 wiring).
+- Data migrations run idempotently on startup via
+  `services.stake.bankroll.migrations.apply_migrations(conn)`.
+
+## Phase 1 invariants — debugging
+
+- `InvariantViolation(I1, ...)` at boot ⇒ config requests live mode.
+  Edit `config/config.yaml` to `mode: paper`.
+- `InvariantViolation(I6, "drawdown ...")` during a race ⇒ bankroll dropped
+  below peak × (1 − `thresholds.drawdown_lock_pct`). Use `/resume <token>`
+  with the token printed when the breaker tripped.
+- `ValueError("Invariant I2 violated ...")` in analyst ⇒ the LLM emitted
+  a probability field; usually a regression in the analyst system prompt.

@@ -25,7 +25,12 @@ logger = logging.getLogger("stake")
 
 from services.stake.analysis.models import AnalysisResult
 from services.stake.analysis.prompts import ANALYSIS_SYSTEM_PROMPT
-from services.stake.bankroll.repository import BankrollRepository
+from services.stake.bankroll import repository as _bankroll_repo_module
+# NOTE: `BankrollRepository` is looked up through the `services.stake.pipeline.nodes`
+# package attribute at call time (see `_bankroll_repo_cls()` below) so that
+# tests which do `@patch("services.stake.pipeline.nodes.BankrollRepository")`
+# still hit the sizing_node / drawdown_check_node code paths even though those
+# functions now live in this submodule.
 from services.stake.parser.llm_parser import StakeParser
 from services.stake.parser.math import (
     apply_portfolio_caps,
@@ -44,6 +49,19 @@ from services.stake.parser.math import (
 from services.stake.pipeline.formatter import format_recommendation
 from services.stake.pipeline.state import PipelineState
 from services.stake.settings import get_stake_settings
+
+
+def _bankroll_repo_cls():
+    """Resolve `BankrollRepository` through the package namespace so tests
+    that patch `services.stake.pipeline.nodes.BankrollRepository` work.
+
+    Falls back to the real class from the bankroll submodule if the package
+    attribute hasn't been populated yet (e.g. during early import).
+    """
+    import services.stake.pipeline.nodes as _pkg
+    return getattr(
+        _pkg, "BankrollRepository", _bankroll_repo_module.BankrollRepository,
+    )
 
 
 async def parse_node(state: PipelineState) -> dict[str, Any]:
@@ -216,7 +234,7 @@ def drawdown_check_node(state: PipelineState) -> dict[str, Any]:
         - {} when check passes or cannot be computed
     """
     settings = get_stake_settings()
-    repo = BankrollRepository(db_path=settings.database_path)
+    repo = _bankroll_repo_cls()(db_path=settings.database_path)
 
     peak = repo.get_peak_balance()
     current = repo.get_balance()
@@ -587,7 +605,7 @@ def sizing_node(state: PipelineState) -> dict[str, Any]:
         }
 
     settings = get_stake_settings()
-    repo = BankrollRepository(settings.database_path)
+    repo = _bankroll_repo_cls()(settings.database_path)
     bankroll = repo.get_balance()
 
     if bankroll is None or bankroll <= 0:
