@@ -217,3 +217,116 @@ def build_analysis_graph():
     graph.add_edge("format_recommendation", END)
 
     return graph.compile()
+
+
+# ===== Phase 1 super-graph (spec-aligned 11 steps with 2 interrupts) =====
+#
+# Thread_id per race: "race:{race_id}:{user_id}".
+# Keep the legacy build_*_graph() helpers above intact for backward compat.
+
+from services.stake.pipeline.nodes.interrupt_gate import make_interrupt_gate_node
+from services.stake.pipeline.nodes.probability_model import make_probability_model_node
+from services.stake.pipeline.nodes.analyst import make_analyst_node
+from services.stake.pipeline.nodes.sizer import make_sizer_node
+from services.stake.pipeline.nodes.decision_maker import make_decision_maker_node
+from services.stake.pipeline.nodes.interrupt_approval import make_interrupt_approval_node
+
+
+async def _ingest_node(state: PipelineState) -> dict:
+    """Normalise source_type. Phase 1 supports text only; unknown values are coerced."""
+    st = state.get("source_type") or "text"
+    if st not in ("text", "screenshot", "photo", "voice"):
+        st = "text"
+    return {"source_type": st}
+
+
+async def _noop_node(state: PipelineState) -> dict:
+    """Placeholder. Tasks 17 (result_recorder, settlement) and 18 (reflection_update)
+    replace this with real node factories."""
+    return {}
+
+
+def _parse_err_router(state: PipelineState) -> str:
+    return "error" if state.get("error") else "gate"
+
+
+def _gate_router(state: PipelineState) -> str:
+    return "skip" if state.get("skip_signal") else "go"
+
+
+def _decision_router(state: PipelineState) -> str:
+    return "skip" if state.get("skip_signal") else "approve"
+
+
+def compile_race_graph(
+    *,
+    settings,
+    checker,
+    checkpointer,
+    parse_node,
+    research_node,
+    analyst_llm,
+    samples_repo,
+    bankroll_repo,
+    results_evaluator,          # reserved for Task 17; Phase 1 user-ping path ignores it
+    calibrator_registry,
+    reflection_writer=None,     # Task 18 wires this; Phase 1 tests pass a stub
+    traces_repo=None,           # Task 19
+    recorder_provider=None,     # Task 19
+):
+    """Compile the Phase-1 11-step race super-graph.
+
+    Wires the spec-aligned 11 steps with two interrupt() pauses (gate, approval).
+    Tasks 17/18/19 replace the _noop_node placeholders for result_recorder,
+    settlement, and reflection_update.
+    """
+    g = StateGraph(PipelineState)
+    g.add_node("ingest", _ingest_node)
+    g.add_node("parse", parse_node)
+    g.add_node("interrupt_gate", make_interrupt_gate_node(settings))
+    g.add_node("research", research_node)
+    g.add_node(
+        "probability_model",
+        make_probability_model_node(registry=calibrator_registry, samples_repo=samples_repo),
+    )
+    g.add_node(
+        "analyst",
+        make_analyst_node(llm_call=analyst_llm, paper_mode=(settings.mode == "paper")),
+    )
+    g.add_node(
+        "sizer",
+        make_sizer_node(settings=settings, checker=checker, bankroll_repo=bankroll_repo),
+    )
+    g.add_node("decision_maker", make_decision_maker_node())
+    g.add_node(
+        "interrupt_approval",
+        make_interrupt_approval_node(bankroll_repo=bankroll_repo, mode=settings.mode),
+    )
+    g.add_node("result_recorder", _noop_node)    # Task 17
+    g.add_node("settlement", _noop_node)         # Task 17
+    g.add_node("reflection_update", _noop_node)  # Task 18
+
+    g.set_entry_point("ingest")
+    g.add_edge("ingest", "parse")
+    g.add_conditional_edges(
+        "parse", _parse_err_router,
+        {"error": "reflection_update", "gate": "interrupt_gate"},
+    )
+    g.add_conditional_edges(
+        "interrupt_gate", _gate_router,
+        {"skip": "reflection_update", "go": "research"},
+    )
+    g.add_edge("research", "probability_model")
+    g.add_edge("probability_model", "analyst")
+    g.add_edge("analyst", "sizer")
+    g.add_edge("sizer", "decision_maker")
+    g.add_conditional_edges(
+        "decision_maker", _decision_router,
+        {"skip": "reflection_update", "approve": "interrupt_approval"},
+    )
+    g.add_edge("interrupt_approval", "result_recorder")
+    g.add_edge("result_recorder", "settlement")
+    g.add_edge("settlement", "reflection_update")
+    g.add_edge("reflection_update", END)
+
+    return g.compile(checkpointer=checkpointer)
