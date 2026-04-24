@@ -1,0 +1,37 @@
+# Phase 1 paper-only configuration template. Copy to config/config.yaml and edit.
+mode: paper
+live_unlock: false
+checkpointer_path: data/checkpoints.db
+
+thresholds:
+  overround:
+    win:              { hard_skip: 0.15, interrupt: 0.12 }
+    place:            { hard_skip: 0.18, interrupt: 0.15 }
+    quinella_exacta:  { hard_skip: 0.20, interrupt: 0.17 }
+    trifecta_first4:  { hard_skip: 0.35, interrupt: 0.30 }
+  min_edge_pp: 3.0
+  min_kelly_fraction: 0.005
+  drawdown_lock_pct: 0.20
+
+sizing:
+  default_kelly_divisor: 4
+  default_risk_mode: normal
+  max_single_stake_pct: 0.05
+  daily_limit_pct: 0.15
+
+calibration:
+  layer: identity
+  retrain_interval_days: 7
+  lookback_days: 90
+  promotion:
+    global_min_samples: 100
+    by_market_min: 300
+    by_track_min: 500
+    brier_alert_increase: 0.01
+
+reflection:
+  top_n_lessons_in_prompt: 10
+  auto_archive_applied: 20
+  auto_archive_roi: -0.05
+  promote_applied: 30
+  promote_roi: 0.10
