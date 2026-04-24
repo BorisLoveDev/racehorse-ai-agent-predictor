@@ -84,3 +84,121 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# ============================================================================
+# Phase 1 runtime — wires config + invariants + checkpointer + graph.
+# The legacy main() above continues to use the pre-Phase-1 graph; Phase 2
+# will flip the entrypoint once the real LLM adapters are wired.
+# ============================================================================
+
+import os
+import sqlite3
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Optional
+
+from services.stake.audit.traces_repo import AuditTracesRepository
+from services.stake.bankroll.migrations import apply_migrations
+from services.stake.bankroll.repository import BankrollRepository
+from services.stake.calibration.samples import CalibrationSamplesRepository
+from services.stake.config import PhaseOneSettings, load_config
+from services.stake.invariants.checker import InvariantChecker
+from services.stake.pipeline.checkpointer import (
+    init_checkpointer, shutdown_checkpointer,
+)
+from services.stake.pipeline.graph import compile_race_graph
+from services.stake.probability.calibration import (
+    CalibratorRegistry, IdentityCalibrator,
+)
+
+
+@dataclass
+class StakeRuntime:
+    settings: PhaseOneSettings
+    checker: InvariantChecker
+    graph: Any
+    bankroll_repo: BankrollRepository
+    samples_repo: CalibrationSamplesRepository
+    traces_repo: AuditTracesRepository
+    reflection_writer: Any
+    _data_conn: sqlite3.Connection
+
+    _shutdown_done: bool = False
+
+    async def shutdown(self) -> None:
+        if self._shutdown_done:
+            return
+        self._shutdown_done = True
+        await shutdown_checkpointer()
+        try:
+            self._data_conn.close()
+        except Exception:
+            pass
+
+
+async def _default_stub_parse_node(state):
+    raise RuntimeError("parse_node not wired; inject via build_runtime(parse_node=...)")
+
+
+async def _default_stub_research_node(state):
+    raise RuntimeError("research_node not wired; inject via build_runtime(research_node=...)")
+
+
+async def _default_stub_analyst_llm(payload):
+    raise RuntimeError("analyst_llm not wired; inject via build_runtime(analyst_llm=...)")
+
+
+async def build_runtime(
+    *,
+    config_path: Path = Path("config/config.yaml"),
+    parse_node=None,
+    research_node=None,
+    analyst_llm=None,
+    reflection_writer=None,
+) -> StakeRuntime:
+    """Assemble Phase-1 runtime: config, invariants, repos, checkpointer, graph.
+
+    Callers inject LLM adapters (parse_node/research_node/analyst_llm) and
+    reflection_writer. Default stubs raise on invocation — Phase 1 tests
+    pass AsyncMock / MagicMock; Phase 2 will wire real adapters.
+
+    Raises InvariantViolation(I1) if config attempts mode=live.
+    """
+    settings = load_config(config_path)  # may raise InvariantViolation
+    checker = InvariantChecker(settings)
+    checker.run_startup()
+
+    # Data DB — one connection for the runtime's repos. Checkpointer uses its
+    # own async connection (AsyncSqliteSaver owns it).
+    db_path = os.environ.get("STAKE_DATABASE_PATH", "races.db")
+    data_conn = sqlite3.connect(db_path)
+    apply_migrations(data_conn)
+
+    bankroll_repo = BankrollRepository(db_path)
+    samples_repo = CalibrationSamplesRepository(data_conn)
+    traces_repo = AuditTracesRepository(data_conn)
+
+    cp_path = os.environ.get("STAKE_CHECKPOINTER_PATH", settings.checkpointer_path)
+    checkpointer = await init_checkpointer(cp_path)
+
+    graph = compile_race_graph(
+        settings=settings, checker=checker, checkpointer=checkpointer,
+        parse_node=parse_node or _default_stub_parse_node,
+        research_node=research_node or _default_stub_research_node,
+        analyst_llm=analyst_llm or _default_stub_analyst_llm,
+        samples_repo=samples_repo,
+        bankroll_repo=bankroll_repo,
+        results_evaluator=None,
+        calibrator_registry=CalibratorRegistry(default=IdentityCalibrator()),
+        reflection_writer=reflection_writer,
+        traces_repo=traces_repo,
+        recorder_provider=None,  # TelegramGraphRunner supplies this at run time
+    )
+
+    return StakeRuntime(
+        settings=settings, checker=checker, graph=graph,
+        bankroll_repo=bankroll_repo, samples_repo=samples_repo,
+        traces_repo=traces_repo, reflection_writer=reflection_writer,
+        _data_conn=data_conn,
+    )
