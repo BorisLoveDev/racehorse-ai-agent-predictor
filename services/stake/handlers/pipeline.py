@@ -105,11 +105,13 @@ async def _run_analysis_inline(
             conn = sqlite3.connect(settings.database_path)
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO stake_pipeline_runs (raw_input, parsed_race_json, user_confirmed, bankroll_at_run) VALUES (?, ?, 1, ?)",
+                "INSERT INTO stake_pipeline_runs (raw_input, parsed_race_json, user_confirmed, bankroll_at_run, chat_id, user_id) VALUES (?, ?, 1, ?, ?, ?)",
                 (
                     pipeline_result.get("raw_input", ""),
                     str(pipeline_result.get("parsed_race", "")),
                     _repo.get_balance(),
+                    message.chat.id if getattr(message, "chat", None) else None,
+                    message.from_user.id if getattr(message, "from_user", None) else None,
                 ),
             )
             run_id = cursor.lastrowid or 0
@@ -124,41 +126,50 @@ async def _run_analysis_inline(
         skip_tier = result.get("skip_tier")
         reply_markup = drawdown_unlock_kb() if skip_signal and skip_tier == 0 else None
 
-        # Try to edit status message with result; if too long, send new message
+        # Try to edit status message with result; if too long, send new message.
+        # Track which message actually carries the recommendation so reply-based
+        # result routing can map a reply back to this run.
+        card_message = None
         try:
             await status_msg.edit_text(
                 recommendation_text,
                 parse_mode="HTML",
                 reply_markup=reply_markup,
             )
+            card_message = status_msg
         except Exception:
-            await message.answer(
+            card_message = await message.answer(
                 recommendation_text,
                 parse_mode="HTML",
                 reply_markup=reply_markup,
             )
 
+        # Persist the card's message_id onto the run so later replies can be
+        # matched back. Failure is non-fatal — reply routing degrades to
+        # "most-recent run" fallback.
+        if card_message is not None and run_id:
+            try:
+                conn = sqlite3.connect(settings.database_path)
+                conn.execute(
+                    "UPDATE stake_pipeline_runs SET message_id = ? WHERE run_id = ?",
+                    (card_message.message_id, run_id),
+                )
+                conn.commit()
+                conn.close()
+            except Exception as _e:
+                logger.warning("Could not persist message_id for run %s: %s", run_id, _e)
+
         # Transition:
-        #  - real bets: awaiting_placed_tracked (Placed/Tracked choice)
-        #  - no bets and not a skip_signal card: offer Report-result for
-        #    calibration (user can paste finishing positions)
-        #  - skip_signal: idle (skip message is self-contained)
+        #  - real bets: awaiting_placed_tracked (Placed/Tracked flow for sizing).
+        #  - everything else: go back to idle. Result collection is now
+        #    driven by replies (see reply_router); user types a result as a
+        #    reply to the card above and reply_router handles it state-free.
+        #  - Non-reply messages in idle = new race, as the user expects.
         if final_bets and not skip_signal:
             await state.set_state(PipelineStates.awaiting_placed_tracked)
             await message.answer(
                 "Mark this recommendation:",
                 reply_markup=tracking_kb(),
-            )
-        elif not skip_signal:
-            # No +EV bets case — still offer to collect the result so future
-            # calibration improves. Defaults to "tracked only" until user
-            # taps Report Result.
-            from services.stake.keyboards.stake_kb import report_result_kb
-            await state.set_state(PipelineStates.awaiting_placed_tracked)
-            await message.answer(
-                "No bet placed, but you can still share the finishing order "
-                "for calibration:",
-                reply_markup=report_result_kb(),
             )
         else:
             await state.set_state(PipelineStates.idle)

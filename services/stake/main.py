@@ -24,6 +24,7 @@ from services.stake.handlers.commands import router as commands_router
 from services.stake.handlers.pipeline import router as pipeline_router
 from services.stake.handlers.callbacks import router as callbacks_router
 from services.stake.handlers.results import router as results_router
+from services.stake.handlers.reply_router import router as reply_router
 from src.logging_config import setup_logging
 
 # Configure root logger so aiogram errors are visible
@@ -71,12 +72,17 @@ async def main() -> None:
     async def on_error(event: ErrorEvent):
         logger.error(f"Handler error: {event.exception}", exc_info=event.exception)
 
-    # Register routers — order matters: callbacks before pipeline (pipeline has catch-all F.text)
-    # results router must come before pipeline router (state-specific handlers take priority)
+    # Register routers — order matters:
+    # 1. commands (slash-prefixed, strict match)
+    # 2. reply_router (F.reply_to_message — catches result replies from any state)
+    # 3. callbacks (inline-button dispatch)
+    # 4. results (state-specific text handlers)
+    # 5. pipeline (catch-all F.text — MUST be last)
     dp.include_router(commands_router)
+    dp.include_router(reply_router)     # Before callbacks/results — replies bypass state
     dp.include_router(callbacks_router)
-    dp.include_router(results_router)   # Before pipeline — handles awaiting_result states
-    dp.include_router(pipeline_router)  # Must be LAST (catches F.text)
+    dp.include_router(results_router)
+    dp.include_router(pipeline_router)
 
     logger.info("Stake Racing Advisor bot starting...")
     await dp.start_polling(bot)

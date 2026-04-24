@@ -17,13 +17,14 @@ Extract data into the following fields exactly. Return ONLY a JSON object matchi
 
 - platform: string or null — Betting platform name (e.g. "Stake.com", "Stake"). null if not present.
 - sport: string or null — Sport type (e.g. "Horse Racing", "Thoroughbred"). null if not present.
-- region: string or null — Country or region of the race (e.g. "Australia", "UK", "Ireland", "Turkey", "Russia", "France"). If you see a city name (e.g. "Istanbul", "Стамбул", "Moscow", "Chantilly"), infer the country and fill region accordingly. null only if there is genuinely zero geographical hint in the text.
-- track: string or null — Racetrack/venue name. Extract AGGRESSIVELY: if ANY place name is present in the text — city name, hippodrome name, venue name — in ANY language or script (Latin, Cyrillic, Turkish, Arabic, Chinese, etc.), USE IT. Transliterate non-Latin scripts to Latin (e.g. "Стамбул" → "Istanbul"; "Москва" → "Moscow"; "Париж" → "Paris"). Common heuristics:
-    * Turkish races in Istanbul run at Veliefendi — if the text mentions "Istanbul" / "İstanbul" / "Стамбул" and no more specific venue, return "Veliefendi (Istanbul)".
-    * Russian races in Moscow run at the Central Moscow Hippodrome — if "Moscow" / "Москва" / "ЦМИ" appears, return "Moscow Hippodrome".
-    * If only the city is clear and the track isn't named, return the CITY as the track (e.g. "Istanbul", "Moscow", "Paris"). This is better than null.
-    * Examples of tracks by language: Flemington, Randwick (AU); Ascot, Cheltenham (UK); Chantilly, Longchamp (FR); Veliefendi (TR); Hipódromo de San Isidro (AR); Tokyo, Nakayama (JP).
-    Return null ONLY when the text literally contains no venue, city, region, or country hint. Do not return null just because the text is in a non-English language — race cards in Russian, Turkish, Cyrillic, etc. still contain extractable track information.
+- region: string or null — Country or region explicitly stated in the text (e.g. "Australia", "Turkey", "Russia"). Do NOT infer region from language, script, odds format, jockey surnames, or any other indirect signal. Only fill when the country/region is literally written. null otherwise.
+- track: string or null — Racetrack or city name LITERALLY present in the text, in any language or script. Transliterate non-Latin scripts to Latin (e.g. "Стамбул" → "Istanbul", "Москва" → "Moscow", "Париж" → "Paris"). STRICT RULES:
+    * Extract only what's literally written. If the text names a venue (e.g. "Veliefendi"), use it. If only a city is written (e.g. "Istanbul" or "Стамбул"), return the transliterated city name.
+    * Do NOT map city → venue (e.g. do NOT return "Veliefendi" when the text only says "Istanbul" — the user knows the city, and we'd rather ask than guess a specific track).
+    * Do NOT infer a city from the language of the text. A paste being in Russian, Turkish, Japanese, etc. is NOT a reason to guess any particular city.
+    * Do NOT infer a city from jockey/trainer surnames or horse names.
+    * Return null when no venue or city is literally written. The user will be asked — better than a wrong guess.
+    Examples: "Flemington", "Randwick" (AU); "Ascot", "Cheltenham" (UK); "Chantilly", "Longchamp" (FR); "Veliefendi", "Istanbul" (TR); "Tokyo", "Nakayama" (JP).
 - race_number: string or null — Race number as displayed (e.g. "Race 3", "R3", "3"). null if not present.
 - race_name: string or null — Official race name/title. null if not present.
 - date: string or null — Race date as shown in the text. null if not present.
