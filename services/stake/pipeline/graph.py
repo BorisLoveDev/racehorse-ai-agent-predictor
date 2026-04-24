@@ -230,6 +230,8 @@ from services.stake.pipeline.nodes.analyst import make_analyst_node
 from services.stake.pipeline.nodes.sizer import make_sizer_node
 from services.stake.pipeline.nodes.decision_maker import make_decision_maker_node
 from services.stake.pipeline.nodes.interrupt_approval import make_interrupt_approval_node
+from services.stake.pipeline.nodes.result_recorder import make_result_recorder_node
+from services.stake.pipeline.nodes.settlement import make_settlement_node
 
 
 async def _ingest_node(state: PipelineState) -> dict:
@@ -302,8 +304,15 @@ def compile_race_graph(
         "interrupt_approval",
         make_interrupt_approval_node(bankroll_repo=bankroll_repo, mode=settings.mode),
     )
-    g.add_node("result_recorder", _noop_node)    # Task 17
-    g.add_node("settlement", _noop_node)         # Task 17
+    g.add_node("result_recorder", make_result_recorder_node())
+    g.add_node(
+        "settlement",
+        make_settlement_node(
+            samples_repo=samples_repo,
+            bankroll_repo=bankroll_repo,
+            paper_mode=(settings.mode == "paper"),
+        ),
+    )
     g.add_node("reflection_update", _noop_node)  # Task 18
 
     g.set_entry_point("ingest")
