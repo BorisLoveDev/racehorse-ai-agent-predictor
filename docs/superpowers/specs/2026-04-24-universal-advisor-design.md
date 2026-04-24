@@ -585,3 +585,196 @@ Delivers: bot that knows its own skill.
 ## 12. Implementation plan gateway
 
 Phase 1 is a natural first commit and ships visible value. Phases 2 and 3 can be sequenced independently — Phase 3 (calibration) does not require Phase 2 (plugins); we could do 3 first if the user prefers measurement over breadth. If the user approves this spec, the next step is to invoke the `writing-plans` skill to break Phase 1 into an executable plan, then iterate.
+
+---
+
+## 13. Framework API reference — concrete patterns
+
+Pulled fresh from LangChain / LangGraph / OpenRouter docs (Context7, 2026-04). The spec above assumes these exact shapes; recording them here so the implementation plan can lean on them without re-researching.
+
+### 13.1 Multimodal input to ChatOpenAI (Phase 1 vision adapter)
+
+LangChain supports two forms for images; OpenRouter/Gemini route both through the OpenAI-compatible endpoint. We'll use the **base64 data-URL** form because it avoids hosting the image and works offline from an LLM's perspective.
+
+```python
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+import base64
+
+def build_vision_message(raw_image_bytes: bytes, mime: str = "image/jpeg") -> HumanMessage:
+    b64 = base64.b64encode(raw_image_bytes).decode()
+    return HumanMessage(content=[
+        {"type": "text", "text": "Extract race data from this screenshot."},
+        {"type": "image_url",
+         "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}},
+    ])
+
+vision_llm = ChatOpenAI(
+    model="google/gemini-3-flash-preview",           # cheap default
+    openai_api_base="https://openrouter.ai/api/v1",
+    openai_api_key=settings.openrouter_api_key,
+    temperature=0.0,
+    max_tokens=4000,
+).with_structured_output(ParsedEvent)                # Pydantic schema enforced
+
+parsed: ParsedEvent = await vision_llm.ainvoke(
+    [SystemMessage(content=PARSE_SYSTEM_PROMPT), build_vision_message(img_bytes)]
+)
+```
+
+Key constraints:
+- **Image content only on `user` role** (OpenRouter rule).
+- `detail: "high"` costs more tokens but improves odds extraction on dense screenshots.
+- `.with_structured_output()` works fine with multimodal content — no separate code path needed.
+
+Alternative modern form (LangChain's cross-provider standard):
+
+```python
+HumanMessage(content_blocks=[
+    {"type": "text",  "text": "Extract race data."},
+    {"type": "image", "base64": b64, "mime_type": "image/jpeg"},
+])
+```
+
+### 13.2 Tool-using agent (existing pattern, confirmed)
+
+The current research module uses `langgraph.prebuilt.create_react_agent` — this remains the right primitive for Phase 2 sub-agents.
+
+```python
+from langgraph.prebuilt import create_react_agent
+from langchain_core.tools import tool
+
+@tool
+def searxng_search(query: str) -> str:
+    """Search self-hosted SearXNG; returns top 5 results."""
+    ...
+
+@tool
+def online_model_search(query: str) -> str:
+    """Query web via OpenRouter web plugin."""
+    ...
+
+sub_agent = create_react_agent(
+    model=cheap_llm,
+    tools=[searxng_search, online_model_search],
+    prompt=SUB_AGENT_SYSTEM_PROMPT,
+)
+result = await sub_agent.ainvoke({"messages": [HumanMessage(content=query)]})
+```
+
+Tools decorated with `@tool` auto-expose docstring + typed signature to the LLM. No schema boilerplate.
+
+### 13.3 Multi-agent supervisor (Phase 2/3 — platform router, analysis delegation)
+
+For the **plugin-routing detector** and for **analysis → research delegation**, the `langgraph_supervisor` package gives us clean handoffs out of the box:
+
+```python
+from langgraph_supervisor import create_supervisor, create_handoff_tool
+from langgraph.prebuilt import create_react_agent
+
+stake_agent      = create_react_agent(model=cheap, tools=[stake_tools],      name="stake_expert",      prompt=STAKE_PROMPT)
+draftkings_agent = create_react_agent(model=cheap, tools=[draftkings_tools], name="draftkings_expert", prompt=DK_PROMPT)
+generic_agent    = create_react_agent(model=cheap, tools=[generic_tools],    name="generic_expert",    prompt=GENERIC_PROMPT)
+
+router = create_supervisor(
+    [stake_agent, draftkings_agent, generic_agent],
+    model=cheap,
+    prompt="Route to the sportsbook-specific expert. If unclear, hand off to generic_expert.",
+).compile()
+```
+
+**Custom handoff tool** (when we want to pass `task_description` or `sport_hint` with the routing):
+
+```python
+from langgraph_supervisor.handoff import METADATA_KEY_HANDOFF_DESTINATION
+from langgraph.types import Command
+
+def make_handoff_tool(agent_name: str):
+    @tool(f"route_to_{agent_name}", description=f"Delegate to {agent_name}.")
+    def _handoff(task: Annotated[str, "what the next agent should do"],
+                 state: Annotated[dict, InjectedState],
+                 tool_call_id: Annotated[str, InjectedToolCallId]) -> Command:
+        return Command(goto=agent_name, graph=Command.PARENT,
+                       update={"messages": state["messages"], "task_description": task})
+    _handoff.metadata = {METADATA_KEY_HANDOFF_DESTINATION: agent_name}
+    return _handoff
+```
+
+Use this when we want the detector to pass typed context (e.g. *"this is an American-odds tennis match, focus on set handicaps"*) instead of raw message text.
+
+### 13.4 Subagent-as-tool (alternative composition)
+
+Simpler than `create_supervisor` when we don't need full handoff semantics — wrap an agent in a `@tool` and let the outer agent call it:
+
+```python
+@tool
+def ask_research_agent(question: str) -> str:
+    """Delegate a runner-research question to the research sub-agent."""
+    resp = await research_agent.ainvoke({"messages": [HumanMessage(content=question)]})
+    return resp["messages"][-1].content
+
+outer = create_react_agent(model=pro, tools=[ask_research_agent, ...], prompt=ANALYSIS_PROMPT)
+```
+
+Good pattern for the **analysis node** in Phase 3: let it request additional research on the fly if its confidence is low on a specific runner, instead of fixed research-then-analyze sequence.
+
+### 13.5 OpenRouter plugins we can leverage
+
+| Plugin | Use |
+|---|---|
+| `web` | Current online research path; `{"id": "web", "max_results": 5}` in `extra_body.plugins` |
+| `file-parser` | Parse PDFs/docs server-side; useful if user sends a form guide PDF |
+| `context-compression` | Automatic context pruning — candidate for long reflection threads |
+| `response-healing` | Retries malformed structured outputs — hedges against `.with_structured_output()` failures |
+
+Wire example for current codebase:
+
+```python
+ChatOpenAI(
+    model="google/gemini-3-flash-preview",
+    openai_api_base="https://openrouter.ai/api/v1",
+    openai_api_key=settings.openrouter_api_key,
+    extra_body={"plugins": [{"id": "web", "max_results": 5}]},  # web research
+)
+```
+
+### 13.6 Structured output with vision — failure-hedging
+
+OpenRouter + Gemini + `.with_structured_output(Pydantic)` generally works, but vision models hallucinate schemas under load. Two defences:
+
+1. **`json_schema` strict mode** via `response_format` (natively supported):
+
+   ```python
+   extra_body={"response_format": {"type": "json_schema",
+                                   "json_schema": {"name": "ParsedEvent",
+                                                   "strict": True,
+                                                   "schema": ParsedEvent.model_json_schema()}}}
+   ```
+
+2. **`response-healing` plugin**: auto-retry + fix malformed JSON server-side.
+
+Use (1) as primary, (2) as belt-and-braces. Keep the existing `.with_structured_output()` as the LangChain-level wrapper (it sets `response_format` under the hood for models that support it).
+
+### 13.7 Modern `create_agent` (to evaluate, Phase 4)
+
+LangChain now exposes `langchain.agents.create_agent` with `ToolStrategy` for stricter structured output and richer tool composition:
+
+```python
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
+
+agent = create_agent(
+    model="google/gemini-3-pro-preview",
+    tools=[search_tool, calc_tool],
+    response_format=ToolStrategy(BetRecommendation),
+)
+```
+
+This is a candidate replacement for `create_react_agent` in Phase 4 once the calibration data tells us which sub-agent behaviours need tighter output guarantees. Not adopted in Phases 1-3 to avoid churn on a still-validating codebase.
+
+### 13.8 What this means for phases
+
+- **Phase 1 vision adapter**: §13.1 + §13.6 (base64 data-URL + strict json_schema).
+- **Phase 2 plugin routing**: can be done without a supervisor (simple if/elif on detector output calls the right prompt). Use `create_supervisor` only if routing LLM-driven logic becomes complex (e.g. ambiguous inputs where we want the LLM itself to decide which plugin to try first). Ship the dumb router first.
+- **Phase 3 calibration**: mostly deterministic Python — the LLM parts (reflection writer, lesson extractor, mindset compressor) stay on simple `ChatOpenAI.ainvoke()`, no agent framework needed.
+- **Phase 4**: evaluate `create_agent` / `ToolStrategy` migration once we have real calibration data showing where output reliability is the bottleneck.
