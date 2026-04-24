@@ -99,43 +99,48 @@ def _looks_like_bot_card(text: Optional[str]) -> bool:
     return any(marker in text for marker in _CARD_MARKERS)
 
 
-@router.message(F.reply_to_message)
+# Filter chain:
+#   F.reply_to_message — only match when this message IS a reply
+#   .from_user.is_bot  — only when the replied-to message was authored by a bot
+# Combined, the handler only enters for replies to OUR recommendation cards
+# (or any bot messages). Non-bot replies (user quoting their own paste,
+# forwarding, etc.) do NOT match the filter and naturally fall through to
+# the next router in the chain — critical because aiogram 3 consumes an
+# update as soon as a handler is invoked.
+@router.message(F.reply_to_message.from_user.is_bot)
 async def handle_reply(message: Message, state: FSMContext) -> None:
-    """Catch replies to recommendation cards and treat them as result reports.
+    """Replies to bot messages → result-reporting flow for that run.
 
-    Non-reply messages don't match this filter; they continue down the router
-    chain unchanged.
+    The filter guarantees `reply_to_message` and `from_user.is_bot` are
+    truthy. Inside the handler we verify DB linkage; if we can't bind the
+    reply to a known pipeline run we tell the user explicitly so they know
+    their reply wasn't silently eaten.
     """
     replied = message.reply_to_message
-    if replied is None:
-        return
-    # Only act on replies to OUR own messages. Users can reply to their own
-    # paste or any third party; those must fall through.
-    replied_from_bot = bool(
-        getattr(replied.from_user, "is_bot", False)
-        if replied.from_user is not None else False
-    )
-    if not replied_from_bot:
-        return
+    assert replied is not None  # filter guarantees this
 
     settings = get_stake_settings()
     db_path = settings.database_path
     replied_text = replied.text or replied.caption or ""
 
-    # Short-circuit: replied-to message doesn't look like a recommendation card.
-    # Still try DB lookup — a card may not match markers if it was a skip card
-    # with unusual wording — but skip if clearly not ours.
     run_info = _lookup_run_by_message_id(db_path, replied.message_id)
-    if run_info is None and not _looks_like_bot_card(replied_text):
-        return  # genuinely not ours — fall through
 
+    # If we can't map the reply to a pipeline run, tell the user clearly.
+    # We MUST answer here — returning silently would consume the update in
+    # aiogram 3 and the user would see no response at all.
     if run_info is None:
-        # Replied to a bot card we don't recognise (pre-hotfix runs, or a
-        # non-pipeline message). Tell the user we can't bind it.
-        await message.answer(
-            "⚠️ Couldn't find the original race for this reply.\n"
-            "Paste the race text again as a new message to re-analyse."
-        )
+        if _looks_like_bot_card(replied_text):
+            await message.answer(
+                "⚠️ Couldn't find the original race for this reply.\n"
+                "It may predate the reply-routing feature. Paste the race "
+                "again as a NEW message (not a reply) to re-analyse."
+            )
+        else:
+            await message.answer(
+                "ℹ️ I can only accept race results as replies to a race "
+                "recommendation card. To analyse a new race, send the paste "
+                "as a new (non-reply) message."
+            )
         return
 
     raw_text = (message.text or "").strip()

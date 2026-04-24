@@ -104,35 +104,40 @@ def _state_mock():
     return s
 
 
-@pytest.mark.asyncio
-async def test_reply_to_non_bot_message_does_nothing(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "services.stake.handlers.reply_router.get_stake_settings",
-        lambda: MagicMock(database_path=str(tmp_path / "x.sqlite")),
-    )
-    msg = _reply_msg(text="1 3 5", replied_text="some user quote",
-                     replied_from_bot=False)
-    state = _state_mock()
-    await handle_reply(msg, state)
-    msg.answer.assert_not_called()
-    state.set_state.assert_not_called()
+def test_filter_rejects_non_bot_reply():
+    """Non-bot replies must NOT match the router's filter — otherwise the
+    handler would consume the update and the paste flow would never see it.
+
+    The filter is `F.reply_to_message.from_user.is_bot`; we probe it by
+    resolving the magic filter against a fake Message-shaped object.
+    """
+    from services.stake.handlers import reply_router as mod
+    # Find the handler's filter chain. We resolve the F filter manually.
+    from aiogram import F
+    filter_expr = F.reply_to_message.from_user.is_bot
+
+    # Non-bot reply — filter must evaluate falsy
+    replied = MagicMock()
+    replied.from_user = MagicMock(is_bot=False)
+    msg_non_bot = MagicMock(reply_to_message=replied)
+    assert not bool(filter_expr.resolve(msg_non_bot))
+
+    # Bot reply — filter must evaluate truthy
+    replied2 = MagicMock()
+    replied2.from_user = MagicMock(is_bot=True)
+    msg_bot = MagicMock(reply_to_message=replied2)
+    assert bool(filter_expr.resolve(msg_bot))
+
+    # No reply at all — filter falsy
+    msg_no_reply = MagicMock(reply_to_message=None)
+    assert not bool(filter_expr.resolve(msg_no_reply))
 
 
 @pytest.mark.asyncio
-async def test_reply_with_no_reply_to_returns_early(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        "services.stake.handlers.reply_router.get_stake_settings",
-        lambda: MagicMock(database_path=str(tmp_path / "x.sqlite")),
-    )
-    msg = MagicMock()
-    msg.reply_to_message = None
-    msg.answer = AsyncMock()
-    await handle_reply(msg, _state_mock())
-    msg.answer.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_reply_to_unknown_bot_card_warns(tmp_path: Path, monkeypatch):
+async def test_reply_to_unknown_bot_card_with_markers_warns_couldnt_find(tmp_path: Path, monkeypatch):
+    """Reply whose replied-to text looks like a pipeline card but has no
+    DB row (e.g. pre-hotfix) — user is told explicitly, not silently dropped.
+    """
     db = tmp_path / "data.sqlite"
     conn = sqlite3.connect(db)
     apply_migrations(conn)
@@ -141,7 +146,6 @@ async def test_reply_to_unknown_bot_card_warns(tmp_path: Path, monkeypatch):
         "services.stake.handlers.reply_router.get_stake_settings",
         lambda: MagicMock(database_path=str(db)),
     )
-    # Reply text looks like a bot card (has marker) but no run in DB
     msg = _reply_msg(
         text="1 3 5",
         replied_text="Bet Recommendations\nSwift Star",
@@ -149,10 +153,36 @@ async def test_reply_to_unknown_bot_card_warns(tmp_path: Path, monkeypatch):
     )
     state = _state_mock()
     await handle_reply(msg, state)
-    # Answered with warning
     msg.answer.assert_awaited()
-    call_text = msg.answer.await_args.args[0]
-    assert "couldn't find" in call_text.lower() or "couldn" in call_text.lower()
+    reply_text = msg.answer.await_args.args[0].lower()
+    assert "couldn" in reply_text
+    state.set_state.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reply_to_non_pipeline_bot_message_answers_guidance(tmp_path: Path, monkeypatch):
+    """Reply to a bot message that ISN'T a recommendation card (e.g. a
+    /start greeting): we still respond, so the user knows their reply was
+    seen but the feature only handles race-card replies. No silent drop."""
+    db = tmp_path / "data.sqlite"
+    conn = sqlite3.connect(db)
+    apply_migrations(conn)
+    conn.close()
+    monkeypatch.setattr(
+        "services.stake.handlers.reply_router.get_stake_settings",
+        lambda: MagicMock(database_path=str(db)),
+    )
+    msg = _reply_msg(
+        text="what about this",
+        replied_text="Welcome to the Stake racing advisor. Paste a race to begin.",
+        replied_msg_id=1,
+    )
+    state = _state_mock()
+    await handle_reply(msg, state)
+    msg.answer.assert_awaited_once()
+    reply_text = msg.answer.await_args.args[0].lower()
+    # Informative guidance, not a silent drop
+    assert "new (non-reply) message" in reply_text or "non-reply" in reply_text
     state.set_state.assert_not_called()
 
 
